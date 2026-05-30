@@ -6,6 +6,7 @@ import { ApiError, handleApiError, jsonOk, readJson } from "@/lib/http";
 import type { Database } from "@/lib/database.types";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type CategoryUpdate = Database["public"]["Tables"]["product_categories"]["Update"];
 

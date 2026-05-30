@@ -7,11 +7,15 @@ import type { Database } from "@/lib/database.types";
  * Bị ràng buộc bởi RLS theo phiên đăng nhập của user (auth.uid()).
  */
 export async function createSupabaseServerClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) {
+    throw new Error(
+      "Thiếu NEXT_PUBLIC_SUPABASE_URL hoặc NEXT_PUBLIC_SUPABASE_ANON_KEY. Hãy set biến môi trường trên Vercel.",
+    );
+  }
   const cookieStore = await cookies();
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  return createServerClient<Database>(url, anonKey, {
       cookies: {
         getAll() {
           return cookieStore.getAll();

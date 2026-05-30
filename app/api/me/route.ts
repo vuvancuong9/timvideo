@@ -2,6 +2,7 @@ import { getOptionalSession } from "@/lib/auth/session";
 import { jsonError, jsonOk } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET() {
   const session = await getOptionalSession();

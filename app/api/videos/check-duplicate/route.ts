@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApi } from "@/lib/auth/session";
 import { canonicalizeVideo } from "@/lib/url/hash";
-import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { handleApiError, jsonOk } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
@@ -22,6 +21,7 @@ export async function GET(req: NextRequest) {
     }
 
     const { canonicalUrl, hash, source } = canonicalizeVideo(url);
+    const { createSupabaseAdminClient } = await import("@/lib/supabase/admin");
     const admin = createSupabaseAdminClient();
     const { data, error } = await admin
       .from("video_submissions")

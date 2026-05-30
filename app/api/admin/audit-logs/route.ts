@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { handleApiError, jsonOk } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // GET /api/admin/audit-logs — chỉ admin.
 export async function GET(req: NextRequest) {

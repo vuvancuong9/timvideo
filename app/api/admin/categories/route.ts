@@ -5,6 +5,7 @@ import { writeAuditLog } from "@/lib/audit";
 import { ApiError, handleApiError, jsonOk, readJson } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // POST /api/admin/categories — admin tạo danh mục.
 export async function POST(req: NextRequest) {

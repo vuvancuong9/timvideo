@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { handleApiError, jsonOk } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 // GET /api/admin/users — danh sách người dùng (accountant/aggregator/admin xem được).
 export async function GET() {
