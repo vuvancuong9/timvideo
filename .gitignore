@@ -46,3 +46,4 @@ pnpm-debug.log*
 !.vscode/extensions.json
 
 .vercel
+tc-probe.txt
