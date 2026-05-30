@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // POST /api/uploads/drive/complete — cấp quyền xem theo link + lấy metadata.
-// Nếu kèm submissionId (admin/aggregator): cập nhật metadata Drive vào video.
+// Nếu kèm submissionId: cập nhật metadata Drive vào submission đó (theo RLS).
 export async function POST(req: NextRequest) {
   try {
     const guard = await requireApi(["staff", "aggregator", "admin"]);
@@ -22,10 +22,7 @@ export async function POST(req: NextRequest) {
 
     const meta = await finalizeDriveFile(fileId);
 
-    if (
-      body.submissionId &&
-      (session.role === "admin" || session.role === "aggregator")
-    ) {
+    if (body.submissionId) {
       const supabase = await createSupabaseServerClient();
       const { error } = await supabase
         .from("video_submissions")
@@ -41,7 +38,7 @@ export async function POST(req: NextRequest) {
 
     await writeAuditLog({
       actorId: session.userId,
-      action: "drive.complete",
+      action: "drive.upload_completed",
       entityType: "drive_upload",
       entityId: body.submissionId ?? null,
       after: meta,

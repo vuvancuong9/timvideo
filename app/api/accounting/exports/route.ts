@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApi } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { fetchVideos } from "@/lib/videos";
+import {
+  fetchSubmissions,
+  fetchLatestDecisionsMap,
+} from "@/lib/video-intake/queries";
 import { toCsv, toXlsx } from "@/lib/export";
 import {
-  VIDEO_SOURCE_LABELS,
-  VIDEO_STATUS_LABELS,
-} from "@/lib/constants";
+  SOURCE_TYPE_LABELS,
+  SUBMISSION_STATUS_LABELS,
+  FINAL_ACTION_LABELS,
+} from "@/lib/video-intake/labels";
 import { handleApiError } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
@@ -74,7 +78,11 @@ export async function GET(req: NextRequest) {
       ]);
       baseName = "doanh-so";
     } else {
-      const { rows: videos } = await fetchVideos(supabase, { limit: 1000 });
+      const { rows: subs } = await fetchSubmissions(supabase, { limit: 1000 });
+      const decisions = await fetchLatestDecisionsMap(
+        supabase,
+        subs.map((s) => s.id),
+      );
       headers = [
         "Ngày tạo",
         "Nhân viên",
@@ -86,28 +94,41 @@ export async function GET(req: NextRequest) {
         "Danh mục",
         "Affiliate",
         "Trạng thái",
+        "Creative",
+        "Policy safety",
+        "Final action",
         "Link rút gọn",
         "Drive",
       ];
-      rows = videos.map((v) => [
-        v.created_at,
-        v.creator?.full_name ?? v.creator?.email ?? "",
-        v.shopee_product_url,
-        v.product_price,
-        v.commission_percent,
-        v.estimated_commission ?? "",
-        VIDEO_SOURCE_LABELS[v.video_source],
-        v.category?.name ?? "",
-        v.affiliate?.code ?? "",
-        VIDEO_STATUS_LABELS[v.status],
-        v.short_link ?? "",
-        v.drive_web_url ?? "",
-      ]);
+      rows = subs.map((v) => {
+        const d = decisions.get(v.id);
+        return [
+          v.created_at,
+          v.creator?.full_name ?? v.creator?.email ?? "",
+          v.shopee_product_url,
+          v.product_price,
+          v.commission_percent,
+          v.estimated_commission ?? "",
+          SOURCE_TYPE_LABELS[v.source_type],
+          v.category?.name ?? "",
+          v.affiliate?.code ?? "",
+          SUBMISSION_STATUS_LABELS[v.status],
+          d?.creative_score ?? "",
+          d?.policy_safety_score ?? "",
+          d ? FINAL_ACTION_LABELS[d.final_action] : "",
+          v.short_link ?? "",
+          v.drive_web_url ?? "",
+        ];
+      });
       baseName = "video";
     }
 
     if (format === "xlsx") {
-      const buffer = await toXlsx(type === "sales" ? "DoanhSo" : "Video", headers, rows);
+      const buffer = await toXlsx(
+        type === "sales" ? "DoanhSo" : "Video",
+        headers,
+        rows,
+      );
       return new NextResponse(new Uint8Array(buffer), {
         headers: {
           "Content-Type":

@@ -11,7 +11,7 @@ export function toCsv(
     headers.map(esc).join(","),
     ...rows.map((r) => r.map(esc).join(",")),
   ];
-  return `﻿${lines.join("\r\n")}`;
+  return `${lines.join("\r\n")}`;
 }
 
 /** Tạo file XLSX (exceljs nạp động để không phình bundle các route khác). */

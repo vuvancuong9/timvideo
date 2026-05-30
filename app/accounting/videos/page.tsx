@@ -1,47 +1,44 @@
 import { requireRole } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { fetchVideos } from "@/lib/videos";
-import { VideoTable } from "@/components/VideoTable";
-import { VideoFilters } from "@/components/VideoFilters";
+import { fetchSubmissions } from "@/lib/video-intake/queries";
+import { SubmissionTable } from "@/components/video-intake/SubmissionTable";
+import { SubmissionFilters } from "@/components/video-intake/SubmissionFilters";
 import { EmptyState, PageHeader } from "@/components/ui";
+import type {
+  VideoSourceType,
+  VideoSubmissionStatus,
+} from "@/types/videoIntake";
 
 export const dynamic = "force-dynamic";
 
 export default async function AccountingVideosPage({
   searchParams,
 }: {
-  searchParams: Promise<{
-    q?: string;
-    status?: string;
-    source?: string;
-    category_id?: string;
-  }>;
+  searchParams: Promise<{ q?: string; status?: string; source_type?: string }>;
 }) {
   await requireRole(["accountant"]);
   const params = await searchParams;
   const supabase = await createSupabaseServerClient();
-
-  const [{ data: categories }, { rows, count }] = await Promise.all([
-    supabase.from("product_categories").select("id,name").order("name"),
-    fetchVideos(supabase, {
-      q: params.q,
-      status: params.status,
-      source: params.source,
-      categoryId: params.category_id,
-      limit: 500,
-    }),
-  ]);
+  const { rows, count } = await fetchSubmissions(supabase, {
+    q: params.q,
+    status: (params.status as VideoSubmissionStatus) || null,
+    source_type: (params.source_type as VideoSourceType) || null,
+    limit: 500,
+  });
 
   return (
     <div>
-      <PageHeader title="Video / Link" description={`Tổng ${count} video (chỉ xem)`} />
+      <PageHeader
+        title="Video / Link"
+        description={`Tổng ${count} video (chỉ xem)`}
+      />
       <div className="mb-4">
-        <VideoFilters categories={categories ?? []} current={params} />
+        <SubmissionFilters current={params} />
       </div>
       {rows.length === 0 ? (
         <EmptyState message="Không có video phù hợp bộ lọc." />
       ) : (
-        <VideoTable
+        <SubmissionTable
           rows={rows}
           show={{ employee: true, affiliate: true, shortLink: true }}
         />

@@ -1,8 +1,6 @@
 import type { Database } from "@/lib/database.types";
 
 export type UserRole = Database["public"]["Enums"]["user_role"];
-export type VideoSource = Database["public"]["Enums"]["video_source"];
-export type VideoStatus = Database["public"]["Enums"]["video_status"];
 
 export const ROLES: UserRole[] = ["staff", "accountant", "aggregator", "admin"];
 
@@ -21,28 +19,12 @@ export const ROLE_HOME: Record<UserRole, string> = {
   admin: "/admin/dashboard",
 };
 
-export const VIDEO_SOURCE_LABELS: Record<VideoSource, string> = {
-  facebook: "Facebook",
-  tiktok: "TikTok",
-  youtube: "YouTube",
-  other: "Khác",
-};
-
-export const VIDEO_STATUS_LABELS: Record<VideoStatus, string> = {
-  draft: "Nháp",
-  submitted: "Đã gửi",
-  assigned: "Đã phân affiliate",
-  short_linked: "Đã gắn link rút gọn",
-  rejected: "Từ chối",
-  archived: "Lưu trữ",
-};
-
 export type AppSection = "staff" | "accounting" | "aggregate" | "admin";
 
 export type NavItem = { href: string; label: string };
 export type NavSection = { title: string; items: NavItem[] };
 
-/** Menu sidebar theo từng role (admin gộp toàn bộ). */
+/** Menu sidebar theo từng role. */
 export const NAV_BY_ROLE: Record<UserRole, NavSection[]> = {
   staff: [
     {
@@ -50,6 +32,7 @@ export const NAV_BY_ROLE: Record<UserRole, NavSection[]> = {
       items: [
         { href: "/staff/new-video", label: "Nhập video mới" },
         { href: "/staff/my-videos", label: "Video của tôi" },
+        { href: "/staff/my-video-reviews", label: "Kết quả chấm điểm" },
         { href: "/staff/my-sales", label: "Doanh số của tôi" },
       ],
     },
@@ -71,8 +54,8 @@ export const NAV_BY_ROLE: Record<UserRole, NavSection[]> = {
       title: "Tổng hợp",
       items: [
         { href: "/aggregate/dashboard", label: "Tổng quan" },
-        { href: "/aggregate/videos", label: "Tất cả video" },
-        { href: "/aggregate/assign", label: "Phân affiliate" },
+        { href: "/aggregate/video-reviews", label: "Video & kết quả" },
+        { href: "/aggregate/video-assign", label: "Phân affiliate" },
         { href: "/aggregate/affiliate-accounts", label: "Tài khoản affiliate" },
       ],
     },
@@ -82,8 +65,10 @@ export const NAV_BY_ROLE: Record<UserRole, NavSection[]> = {
       title: "Quản trị",
       items: [
         { href: "/admin/dashboard", label: "Tổng quan" },
-        { href: "/admin/videos", label: "Tất cả video" },
+        { href: "/admin/video-reviews", label: "Video & review" },
         { href: "/admin/short-links", label: "Link rút gọn" },
+        { href: "/admin/review-jobs", label: "Review jobs" },
+        { href: "/admin/policy-rules", label: "Policy rules" },
         { href: "/admin/users", label: "Người dùng & quyền" },
         { href: "/admin/categories", label: "Danh mục" },
         { href: "/admin/affiliate-accounts", label: "Tài khoản affiliate" },

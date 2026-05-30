@@ -1,6 +1,6 @@
 import { requireRole } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { NewVideoForm } from "@/components/NewVideoForm";
+import { NewVideoIntakeForm } from "@/components/video-intake/NewVideoIntakeForm";
 import { PageHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +18,9 @@ export default async function NewVideoPage() {
     <div>
       <PageHeader
         title="Nhập video mới"
-        description="Điền thông tin sản phẩm và link video bạn tìm được."
+        description="Điền thông tin sản phẩm + video bạn đã tìm được. Hệ thống sẽ tự chấm điểm rủi ro."
       />
-      <NewVideoForm categories={categories ?? []} />
+      <NewVideoIntakeForm categories={categories ?? []} />
     </div>
   );
 }

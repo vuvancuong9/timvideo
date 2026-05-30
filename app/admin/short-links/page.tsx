@@ -1,9 +1,13 @@
 import { requireRole } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { fetchVideos } from "@/lib/videos";
-import { ShortLinksClient } from "@/components/admin/ShortLinksClient";
-import { VideoFilters } from "@/components/VideoFilters";
+import { fetchSubmissions } from "@/lib/video-intake/queries";
+import { ShortLinkClient } from "@/components/video-review/ShortLinkClient";
+import { SubmissionFilters } from "@/components/video-intake/SubmissionFilters";
 import { EmptyState, PageHeader } from "@/components/ui";
+import type {
+  VideoSourceType,
+  VideoSubmissionStatus,
+} from "@/types/videoIntake";
 
 export const dynamic = "force-dynamic";
 
@@ -13,27 +17,20 @@ export default async function AdminShortLinksPage({
   searchParams: Promise<{
     q?: string;
     status?: string;
-    source?: string;
-    category_id?: string;
+    source_type?: string;
     assigned?: string;
   }>;
 }) {
   await requireRole(["admin"]);
   const params = await searchParams;
   const supabase = await createSupabaseServerClient();
-
-  const [{ data: categories }, { rows, count }] = await Promise.all([
-    supabase.from("product_categories").select("id,name").order("name"),
-    fetchVideos(supabase, {
-      q: params.q,
-      status: params.status,
-      source: params.source,
-      categoryId: params.category_id,
-      assigned:
-        (params.assigned as "assigned" | "unassigned" | undefined) ?? null,
-      limit: 500,
-    }),
-  ]);
+  const { rows, count } = await fetchSubmissions(supabase, {
+    q: params.q,
+    status: (params.status as VideoSubmissionStatus) || null,
+    source_type: (params.source_type as VideoSourceType) || null,
+    assigned: (params.assigned as "assigned" | "unassigned") || null,
+    limit: 500,
+  });
 
   return (
     <div>
@@ -42,16 +39,12 @@ export default async function AdminShortLinksPage({
         description={`Điền/sửa link rút gọn (chỉ admin) — ${count} video`}
       />
       <div className="mb-4">
-        <VideoFilters
-          categories={categories ?? []}
-          current={params}
-          showAssigned
-        />
+        <SubmissionFilters current={params} showAssigned />
       </div>
       {rows.length === 0 ? (
         <EmptyState message="Không có video phù hợp bộ lọc." />
       ) : (
-        <ShortLinksClient videos={rows} />
+        <ShortLinkClient rows={rows} />
       )}
     </div>
   );

@@ -1,10 +1,4 @@
 import clsx from "clsx";
-import {
-  VIDEO_SOURCE_LABELS,
-  VIDEO_STATUS_LABELS,
-  type VideoSource,
-  type VideoStatus,
-} from "@/lib/constants";
 
 export function PageHeader({
   title,
@@ -73,14 +67,22 @@ export function EmptyState({ message }: { message: string }) {
   );
 }
 
+export type BadgeColor =
+  | "gray"
+  | "blue"
+  | "green"
+  | "yellow"
+  | "red"
+  | "purple";
+
 export function Badge({
   children,
   color = "gray",
 }: {
   children: React.ReactNode;
-  color?: "gray" | "blue" | "green" | "yellow" | "red" | "purple";
+  color?: BadgeColor;
 }) {
-  const colors: Record<string, string> = {
+  const colors: Record<BadgeColor, string> = {
     gray: "bg-gray-100 text-gray-700",
     blue: "bg-blue-100 text-blue-700",
     green: "bg-green-100 text-green-700",
@@ -98,31 +100,4 @@ export function Badge({
       {children}
     </span>
   );
-}
-
-const STATUS_COLOR: Record<
-  VideoStatus,
-  "gray" | "blue" | "green" | "yellow" | "red" | "purple"
-> = {
-  draft: "gray",
-  submitted: "blue",
-  assigned: "purple",
-  short_linked: "green",
-  rejected: "red",
-  archived: "gray",
-};
-
-export function StatusBadge({ status }: { status: VideoStatus }) {
-  return <Badge color={STATUS_COLOR[status]}>{VIDEO_STATUS_LABELS[status]}</Badge>;
-}
-
-const SOURCE_COLOR: Record<VideoSource, "blue" | "gray" | "red" | "purple"> = {
-  facebook: "blue",
-  tiktok: "gray",
-  youtube: "red",
-  other: "purple",
-};
-
-export function SourceBadge({ source }: { source: VideoSource }) {
-  return <Badge color={SOURCE_COLOR[source]}>{VIDEO_SOURCE_LABELS[source]}</Badge>;
 }

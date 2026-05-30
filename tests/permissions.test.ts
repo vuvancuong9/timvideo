@@ -1,124 +1,148 @@
 import { describe, expect, it } from "vitest";
 import {
-  canAccessSection,
-  canAssignAffiliate,
-  canEditShortLink,
-  canUpdateVideoFields,
-  canUploadDrive,
-  canViewAllVideos,
-  canViewVideo,
-  isReadOnly,
-} from "@/lib/permissions";
+  canViewSubmission,
+  canUpdateSubmissionField,
+  type CurrentUser,
+} from "@/lib/auth/role-guard";
+
+function user(role: CurrentUser["role"], id = "u1"): CurrentUser {
+  return {
+    userId: id,
+    email: `${id}@x.com`,
+    role,
+    profile: {
+      id,
+      email: `${id}@x.com`,
+      full_name: null,
+      role,
+      is_active: true,
+      created_at: "",
+      updated_at: "",
+    },
+  };
+}
 
 describe("Acceptance #1 — staff chỉ xem video của chính mình", () => {
   it("staff A KHÔNG xem được video của staff B", () => {
-    expect(canViewVideo("staff", "A", { created_by: "B" })).toBe(false);
+    expect(
+      canViewSubmission(user("staff", "A"), { created_by: "B" }),
+    ).toBe(false);
   });
   it("staff A xem được video của chính mình", () => {
-    expect(canViewVideo("staff", "A", { created_by: "A" })).toBe(true);
+    expect(
+      canViewSubmission(user("staff", "A"), { created_by: "A" }),
+    ).toBe(true);
   });
   it("accountant/aggregator/admin xem được tất cả", () => {
-    expect(canViewVideo("accountant", "X", { created_by: "B" })).toBe(true);
-    expect(canViewVideo("aggregator", "X", { created_by: "B" })).toBe(true);
-    expect(canViewVideo("admin", "X", { created_by: "B" })).toBe(true);
+    expect(canViewSubmission(user("accountant"), { created_by: "B" })).toBe(
+      true,
+    );
+    expect(canViewSubmission(user("aggregator"), { created_by: "B" })).toBe(
+      true,
+    );
+    expect(canViewSubmission(user("admin"), { created_by: "B" })).toBe(true);
   });
 });
 
 describe("Acceptance #2 — staff không sửa assigned_affiliate_account_id", () => {
-  it("canUpdateVideoFields=false", () => {
-    expect(canUpdateVideoFields("staff", ["assigned_affiliate_account_id"])).toBe(
-      false,
-    );
-  });
-  it("canAssignAffiliate=false", () => {
-    expect(canAssignAffiliate("staff")).toBe(false);
+  it("staff creator không sửa được", () => {
+    expect(
+      canUpdateSubmissionField(
+        user("staff", "A"),
+        "assigned_affiliate_account_id",
+        { isCreator: true, isReviewed: false },
+      ),
+    ).toBe(false);
   });
 });
 
 describe("Acceptance #3 — staff không sửa short_link", () => {
-  it("canUpdateVideoFields=false", () => {
-    expect(canUpdateVideoFields("staff", ["short_link"])).toBe(false);
-  });
-  it("canEditShortLink=false", () => {
-    expect(canEditShortLink("staff")).toBe(false);
-  });
-});
-
-describe("Acceptance #4 — accountant read-only, xem tất cả", () => {
-  it("isReadOnly=true", () => {
-    expect(isReadOnly("accountant")).toBe(true);
-  });
-  it("không sửa được trường nào", () => {
-    expect(canUpdateVideoFields("accountant", ["status"])).toBe(false);
-    expect(canUpdateVideoFields("accountant", ["aggregate_note"])).toBe(false);
-    expect(canAssignAffiliate("accountant")).toBe(false);
-    expect(canEditShortLink("accountant")).toBe(false);
-    expect(canUploadDrive("accountant")).toBe(false);
-  });
-  it("nhưng xem được toàn bộ video", () => {
-    expect(canViewAllVideos("accountant")).toBe(true);
-  });
-});
-
-describe("Acceptance #5 — aggregator phân affiliate", () => {
-  it("canAssignAffiliate=true", () => {
-    expect(canAssignAffiliate("aggregator")).toBe(true);
-  });
-  it("được sửa các trường tổng hợp", () => {
+  it("staff creator không sửa short_link", () => {
     expect(
-      canUpdateVideoFields("aggregator", [
+      canUpdateSubmissionField(user("staff", "A"), "short_link", {
+        isCreator: true,
+        isReviewed: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe("Acceptance #4 — accountant read-only", () => {
+  it("không sửa được trường nào", () => {
+    for (const f of [
+      "status",
+      "aggregate_note",
+      "short_link",
+      "assigned_affiliate_account_id",
+      "staff_note",
+      "product_price",
+    ]) {
+      expect(canUpdateSubmissionField(user("accountant"), f)).toBe(false);
+    }
+  });
+});
+
+describe("Acceptance #5 — aggregator assign affiliate được", () => {
+  it("sửa được assigned + aggregate_note + status", () => {
+    expect(
+      canUpdateSubmissionField(
+        user("aggregator"),
         "assigned_affiliate_account_id",
-        "status",
-        "aggregate_note",
-      ]),
+      ),
     ).toBe(true);
+    expect(canUpdateSubmissionField(user("aggregator"), "aggregate_note")).toBe(
+      true,
+    );
+    expect(canUpdateSubmissionField(user("aggregator"), "status")).toBe(true);
   });
 });
 
 describe("Acceptance #6 — aggregator KHÔNG sửa short_link", () => {
-  it("canEditShortLink=false", () => {
-    expect(canEditShortLink("aggregator")).toBe(false);
-  });
-  it("canUpdateVideoFields short_link=false", () => {
-    expect(canUpdateVideoFields("aggregator", ["short_link"])).toBe(false);
-  });
-  it("kèm short_link trong tập trường -> vẫn false", () => {
-    expect(canUpdateVideoFields("aggregator", ["status", "short_link"])).toBe(
+  it("short_link & admin_note bị chặn", () => {
+    expect(canUpdateSubmissionField(user("aggregator"), "short_link")).toBe(
+      false,
+    );
+    expect(canUpdateSubmissionField(user("aggregator"), "admin_note")).toBe(
+      false,
+    );
+    // không sửa được field gốc của nhân viên
+    expect(canUpdateSubmissionField(user("aggregator"), "product_price")).toBe(
       false,
     );
   });
 });
 
 describe("Acceptance #7 — admin sửa được short_link", () => {
-  it("canEditShortLink=true", () => {
-    expect(canEditShortLink("admin")).toBe(true);
-  });
-  it("admin sửa được mọi trường", () => {
-    expect(canUpdateVideoFields("admin", ["short_link", "status"])).toBe(true);
-    expect(canAssignAffiliate("admin")).toBe(true);
-    expect(canUploadDrive("admin")).toBe(true);
+  it("admin toàn quyền field", () => {
+    expect(canUpdateSubmissionField(user("admin"), "short_link")).toBe(true);
+    expect(canUpdateSubmissionField(user("admin"), "admin_note")).toBe(true);
+    expect(canUpdateSubmissionField(user("admin"), "product_price")).toBe(true);
   });
 });
 
-describe("Truy cập khu vực theo role", () => {
-  it("staff chỉ vào khu vực nhân viên", () => {
-    expect(canAccessSection("staff", "staff")).toBe(true);
-    expect(canAccessSection("staff", "accounting")).toBe(false);
-    expect(canAccessSection("staff", "aggregate")).toBe(false);
-    expect(canAccessSection("staff", "admin")).toBe(false);
+describe("staff field rules thêm", () => {
+  it("staff creator sửa được staff_note khi chưa reviewed", () => {
+    expect(
+      canUpdateSubmissionField(user("staff", "A"), "staff_note", {
+        isCreator: true,
+        isReviewed: false,
+      }),
+    ).toBe(true);
   });
-  it("accountant chỉ vào kế toán", () => {
-    expect(canAccessSection("accountant", "accounting")).toBe(true);
-    expect(canAccessSection("accountant", "admin")).toBe(false);
+  it("staff creator KHÔNG sửa được sau khi reviewed", () => {
+    expect(
+      canUpdateSubmissionField(user("staff", "A"), "staff_note", {
+        isCreator: true,
+        isReviewed: true,
+      }),
+    ).toBe(false);
   });
-  it("aggregator chỉ vào tổng hợp", () => {
-    expect(canAccessSection("aggregator", "aggregate")).toBe(true);
-    expect(canAccessSection("aggregator", "admin")).toBe(false);
-  });
-  it("admin vào được tất cả", () => {
-    expect(canAccessSection("admin", "staff")).toBe(true);
-    expect(canAccessSection("admin", "accounting")).toBe(true);
-    expect(canAccessSection("admin", "aggregate")).toBe(true);
-    expect(canAccessSection("admin", "admin")).toBe(true);
+  it("staff KHÔNG phải creator không sửa được", () => {
+    expect(
+      canUpdateSubmissionField(user("staff", "A"), "staff_note", {
+        isCreator: false,
+        isReviewed: false,
+      }),
+    ).toBe(false);
   });
 });
