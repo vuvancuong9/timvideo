@@ -45,7 +45,13 @@ export function handleApiError(err: unknown): NextResponse {
     return jsonError(403, "Bạn không có quyền thực hiện thao tác này", "FORBIDDEN");
   }
   console.error("[api] Unhandled error:", err);
-  return jsonError(500, "Lỗi hệ thống, vui lòng thử lại sau");
+  // Kèm detail (message gốc) để admin tự chẩn đoán — KHÔNG kèm stack/secret.
+  const detail =
+    typeof pg?.message === "string" ? pg.message.slice(0, 300) : undefined;
+  return NextResponse.json(
+    { error: "Lỗi hệ thống, vui lòng thử lại sau", detail },
+    { status: 500 },
+  );
 }
 
 export async function readJson<T>(req: Request): Promise<T> {

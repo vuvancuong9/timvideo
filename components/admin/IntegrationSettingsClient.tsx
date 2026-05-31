@@ -95,7 +95,11 @@ export function IntegrationSettingsClient({
         body: JSON.stringify({ values: payload }),
       });
       const j = await res.json();
-      if (!res.ok) throw new Error(j.error || "Lưu thất bại");
+      if (!res.ok) {
+        throw new Error(
+          [j.error, j.detail].filter(Boolean).join(" — ") || "Lưu thất bại",
+        );
+      }
       setMsg(`Đã lưu ${j.updated?.length ?? 0} mục.`);
       setValues({});
       router.refresh();
