@@ -143,16 +143,46 @@ export function NewVideoIntakeForm({
     return () => clearTimeout(t);
   }, [videoUrl]);
 
-  /** Upload 1 file lên Supabase Storage qua signed URL. Đặt tên theo Sub ID. */
+  /** PUT file lên resumable URL của Drive, trả fileId. */
+  function putToDrive(url: string, f: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", url, true);
+      xhr.setRequestHeader(
+        "Content-Type",
+        f.type || "application/octet-stream",
+      );
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(JSON.parse(xhr.responseText).id);
+          } catch {
+            reject(new Error("Drive không trả fileId"));
+          }
+        } else {
+          reject(new Error(`Upload Drive thất bại (${xhr.status})`));
+        }
+      };
+      xhr.onerror = () => reject(new Error("Lỗi mạng khi upload Drive"));
+      xhr.send(f);
+    });
+  }
+
+  /**
+   * Upload 1 file. Tự chọn nơi lưu: Google Drive (nếu admin đã kết nối) hoặc
+   * Supabase Storage (fallback). Đặt tên theo Sub ID.
+   */
   async function uploadOne(f: File, index: number): Promise<UploadedFile> {
     const cached = uploadCache.current.get(f);
     if (cached) return cached;
 
-    const sessionRes = await fetch("/api/uploads/storage/create-session", {
+    const sessionRes = await fetch("/api/uploads/file/create-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fileName: f.name,
+        mimeType: f.type || "application/octet-stream",
+        fileSize: f.size,
         baseName: subId || null,
         index,
       }),
@@ -165,22 +195,40 @@ export function NewVideoIntakeForm({
       );
     }
 
-    const supabase = createSupabaseBrowserClient();
-    const { error: upErr } = await supabase.storage
-      .from(sessionJson.bucket)
-      .uploadToSignedUrl(sessionJson.path, sessionJson.token, f, {
-        contentType: f.type || "application/octet-stream",
+    let meta: UploadedFile;
+    if (sessionJson.mode === "drive") {
+      const fileId = await putToDrive(sessionJson.uploadUrl, f);
+      const compRes = await fetch("/api/uploads/file/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId }),
       });
-    if (upErr) {
-      throw new Error(`Upload thất bại: ${upErr.message}`);
+      const compJson = await compRes.json();
+      if (!compRes.ok) {
+        throw new Error(compJson.error || "Không hoàn tất upload Drive");
+      }
+      meta = {
+        publicUrl: compJson.drive.webViewLink || compJson.drive.directUrl || "",
+        name: f.name,
+        mimeType: f.type || "application/octet-stream",
+        kind: isImageFile(f) ? "image" : "video",
+      };
+    } else {
+      // mode 'storage'
+      const supabase = createSupabaseBrowserClient();
+      const { error: upErr } = await supabase.storage
+        .from(sessionJson.bucket)
+        .uploadToSignedUrl(sessionJson.path, sessionJson.token, f, {
+          contentType: f.type || "application/octet-stream",
+        });
+      if (upErr) throw new Error(`Upload thất bại: ${upErr.message}`);
+      meta = {
+        publicUrl: sessionJson.publicUrl,
+        name: f.name,
+        mimeType: f.type || "application/octet-stream",
+        kind: isImageFile(f) ? "image" : "video",
+      };
     }
-
-    const meta: UploadedFile = {
-      publicUrl: sessionJson.publicUrl,
-      name: f.name,
-      mimeType: f.type || "application/octet-stream",
-      kind: isImageFile(f) ? "image" : "video",
-    };
     uploadCache.current.set(f, meta);
     return meta;
   }

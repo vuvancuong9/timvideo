@@ -1,6 +1,7 @@
 import { requireRole } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getManagedSettingsStatus } from "@/lib/app-settings";
+import { isDriveOAuthConnected } from "@/lib/drive-oauth";
 import { IntegrationSettingsClient } from "@/components/admin/IntegrationSettingsClient";
 import { SalesImportClient } from "@/components/admin/SalesImportClient";
 import { Badge, Card, PageHeader } from "@/components/ui";
@@ -8,10 +9,16 @@ import { ROLE_LABELS } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminSettingsPage() {
+export default async function AdminSettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ google?: string }>;
+}) {
   await requireRole(["admin"]);
+  const { google: googleStatus } = await searchParams;
 
   const { managed, system } = await getManagedSettingsStatus();
+  const driveConnected = await isDriveOAuthConnected();
 
   const supabase = await createSupabaseServerClient();
   const { data: employees } = await supabase
@@ -33,6 +40,44 @@ export default async function AdminSettingsPage() {
         </h2>
         <IntegrationSettingsClient managed={managed} />
       </section>
+
+      {/* Kết nối Google Drive cá nhân để lưu video */}
+      <Card>
+        <h2 className="mb-2 font-semibold text-gray-900">
+          Lưu video vào Google Drive của bạn
+        </h2>
+        {googleStatus === "connected" && (
+          <p className="mb-2 rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+            ✅ Đã kết nối Google Drive thành công! Video tải lên từ giờ sẽ lưu
+            vào Drive của bạn.
+          </p>
+        )}
+        {googleStatus === "error" && (
+          <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            ❌ Kết nối thất bại. Kiểm tra Client ID/Secret + Redirect URI rồi thử
+            lại.
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm text-gray-600">Trạng thái:</span>
+          {driveConnected ? (
+            <Badge color="green">Đã kết nối</Badge>
+          ) : (
+            <Badge color="gray">Chưa kết nối</Badge>
+          )}
+          <a
+            href="/api/auth/google/start"
+            className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
+          >
+            {driveConnected ? "Kết nối lại" : "Kết nối Google Drive"}
+          </a>
+        </div>
+        <p className="mt-2 text-xs text-gray-400">
+          Cần nhập GOOGLE_OAUTH_CLIENT_ID + SECRET ở trên trước. Nếu CHƯA kết
+          nối, video sẽ tự lưu vào Supabase Storage (vẫn có link xem). Khi đã
+          kết nối, video lưu vào Drive cá nhân của bạn (dùng quota của bạn).
+        </p>
+      </Card>
 
       {/* Trạng thái hạ tầng (env Vercel, read-only) */}
       <Card>
