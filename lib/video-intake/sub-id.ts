@@ -1,9 +1,9 @@
 /**
- * Sub ID = <ngày VN> - <account nhân viên> - <số thứ tự>, ví dụ:
- *   20260531-cuongbghvtc-001
- * Dùng làm mã định danh video + tên file lưu trữ.
+ * Sub ID = <ngày><tháng><account nhân viên><số thứ tự>, ví dụ:
+ *   3105cuongbghvtc001   (ngày 31/05, account cuongbghvtc, STT 001)
+ * Không có năm, không dấu gạch. Dùng làm mã định danh video + tên file.
  *
- * Phần hàm thuần (accountSlug/vnDateCompact/buildSubId) an toàn cho client.
+ * Phần hàm thuần (accountSlug/vnDateDDMM/buildSubId) an toàn cho client.
  * nextSubId nhận client làm tham số nên không import gì node-specific.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -28,24 +28,24 @@ export function accountSlug(
   return slug || "user";
 }
 
-/** Ngày hiện tại theo giờ VN, dạng YYYYMMDD. */
-export function vnDateCompact(date: Date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
+/** Ngày hiện tại theo giờ VN, dạng DDMM (vd 31/05 -> "3105"). */
+export function vnDateDDMM(date: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Asia/Ho_Chi_Minh",
-    year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(date);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  return `${get("year")}${get("month")}${get("day")}`;
+  return `${get("day")}${get("month")}`;
 }
 
+/** Ghép Sub ID: <DDMM><account><STT 3 chữ số>, vd "3105cuongbghvtc001". */
 export function buildSubId(
-  dateCompact: string,
+  dateDDMM: string,
   account: string,
   seq: number,
 ): string {
-  return `${dateCompact}-${account}-${String(seq).padStart(3, "0")}`;
+  return `${dateDDMM}${account}${String(seq).padStart(3, "0")}`;
 }
 
 /**
@@ -57,13 +57,13 @@ export async function nextSubId(
   client: SupabaseClient<Database>,
   userId: string,
   account: string,
-  dateCompact: string,
+  dateDDMM: string,
 ): Promise<string> {
-  const prefix = `${dateCompact}-${account}-`;
+  const prefix = `${dateDDMM}${account}`;
   const { count } = await client
     .from("video_submissions")
     .select("id", { count: "exact", head: true })
     .eq("created_by", userId)
     .like("sub_id", `${prefix}%`);
-  return buildSubId(dateCompact, account, (count ?? 0) + 1);
+  return buildSubId(dateDDMM, account, (count ?? 0) + 1);
 }

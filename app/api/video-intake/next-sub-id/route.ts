@@ -3,7 +3,7 @@ import { requireApi } from "@/lib/auth/session";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
   accountSlug,
-  vnDateCompact,
+  vnDateDDMM,
   nextSubId,
 } from "@/lib/video-intake/sub-id";
 import { handleApiError, jsonOk } from "@/lib/http";
@@ -20,7 +20,7 @@ export async function GET() {
 
     const admin = createSupabaseAdminClient();
     const account = accountSlug(session.email, session.profile.full_name);
-    const date = vnDateCompact();
+    const date = vnDateDDMM();
     const subId = await nextSubId(admin, session.userId, account, date);
 
     return jsonOk({ subId, account, date });

@@ -8,7 +8,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { canonicalizeForDedup } from "@/lib/video-intake/duplicate";
 import {
   accountSlug,
-  vnDateCompact,
+  vnDateDDMM,
   nextSubId,
 } from "@/lib/video-intake/sub-id";
 import { ApiError } from "@/lib/http";
@@ -68,7 +68,7 @@ export async function createSubmissionWithJob(
   // đếm chính xác toàn bộ video của user (vượt RLS), tránh lệch số thứ tự.
   const admin = createSupabaseAdminClient();
   const account = accountSlug(actor?.email, actor?.fullName);
-  const dateCompact = vnDateCompact();
+  const dateCompact = vnDateDDMM();
 
   function buildInsert(
     subId: string,

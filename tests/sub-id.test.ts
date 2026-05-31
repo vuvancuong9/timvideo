@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   accountSlug,
-  vnDateCompact,
+  vnDateDDMM,
   buildSubId,
 } from "@/lib/video-intake/sub-id";
 
@@ -20,19 +20,22 @@ describe("accountSlug", () => {
   });
 });
 
-describe("buildSubId", () => {
-  it("ghép đúng định dạng, pad 3 chữ số", () => {
-    expect(buildSubId("20260531", "cuong", 1)).toBe("20260531-cuong-001");
-    expect(buildSubId("20260531", "cuong", 12)).toBe("20260531-cuong-012");
-    expect(buildSubId("20260531", "cuong", 7)).toBe("20260531-cuong-007");
+describe("buildSubId (DDMM + account + STT, không dấu)", () => {
+  it("ghép đúng định dạng ví dụ 31/05", () => {
+    expect(buildSubId("3105", "cuongbghvtc", 1)).toBe("3105cuongbghvtc001");
+    expect(buildSubId("3105", "cuongbghvtc", 12)).toBe("3105cuongbghvtc012");
+    expect(buildSubId("3105", "cuongbghvtc", 7)).toBe("3105cuongbghvtc007");
   });
 });
 
-describe("vnDateCompact (giờ VN +7)", () => {
-  it("12:00Z 31/05 -> 20260531", () => {
-    expect(vnDateCompact(new Date("2026-05-31T05:00:00Z"))).toBe("20260531");
+describe("vnDateDDMM (giờ VN +7)", () => {
+  it("05:00Z 31/05 -> 3105", () => {
+    expect(vnDateDDMM(new Date("2026-05-31T05:00:00Z"))).toBe("3105");
   });
-  it("20:00Z 31/05 -> sang 01/06 theo giờ VN", () => {
-    expect(vnDateCompact(new Date("2026-05-31T20:00:00Z"))).toBe("20260601");
+  it("20:00Z 31/05 -> sang 01/06 theo giờ VN -> 0106", () => {
+    expect(vnDateDDMM(new Date("2026-05-31T20:00:00Z"))).toBe("0106");
+  });
+  it("mùng 1 tháng 1 -> 0101", () => {
+    expect(vnDateDDMM(new Date("2026-01-01T03:00:00Z"))).toBe("0101");
   });
 });
