@@ -47,8 +47,19 @@ export async function createResumableUploadSession(params: {
 }): Promise<{ uploadUrl: string; folderId: string }> {
   const auth = await getDriveJwtAuth();
   const folderId = await getDriveFolderId();
-  const creds = await auth.authorize();
-  const accessToken = creds.access_token;
+  let accessToken: string | null | undefined;
+  try {
+    const creds = await auth.authorize();
+    accessToken = creds.access_token;
+  } catch (err) {
+    throw new ApiError(
+      502,
+      `Google Drive xác thực thất bại — kiểm tra GOOGLE_DRIVE_CLIENT_EMAIL / PRIVATE_KEY (private key phải dán nguyên, gồm cả dòng BEGIN/END). Chi tiết: ${
+        err instanceof Error ? err.message : String(err)
+      }`.slice(0, 400),
+      "DRIVE_AUTH_FAILED",
+    );
+  }
   if (!accessToken) {
     throw new ApiError(502, "Không lấy được access token Google Drive.");
   }

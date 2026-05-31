@@ -172,7 +172,10 @@ export function NewVideoIntakeForm({
     });
     const sessionJson = await sessionRes.json();
     if (!sessionRes.ok) {
-      throw new Error(sessionJson.error || "Không tạo được phiên upload Drive");
+      throw new Error(
+        [sessionJson.error, sessionJson.detail].filter(Boolean).join(" — ") ||
+          "Không tạo được phiên upload Drive",
+      );
     }
     const uploaded = await putFileWithProgress(
       sessionJson.uploadUrl,
@@ -188,7 +191,10 @@ export function NewVideoIntakeForm({
     });
     const completeJson = await completeRes.json();
     if (!completeRes.ok) {
-      throw new Error(completeJson.error || "Không hoàn tất upload Drive");
+      throw new Error(
+        [completeJson.error, completeJson.detail].filter(Boolean).join(" — ") ||
+          "Không hoàn tất upload Drive",
+      );
     }
     const meta = completeJson.drive as DriveMeta;
     driveCache.current.set(f, meta);
