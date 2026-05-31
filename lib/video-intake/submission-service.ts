@@ -38,11 +38,15 @@ export async function createSubmissionWithJob(
   }
 
   const rawVideoUrl = (input.original_video_url ?? "").trim();
-  const hasDriveVideo = Boolean(input.drive?.driveFileId);
+  // File video đã upload: Storage trả driveWebUrl (driveFileId=null); Drive cũ trả driveFileId.
+  const hasUploadedVideo = Boolean(
+    input.drive?.driveFileId || input.drive?.driveWebUrl,
+  );
+  const hasImages = (input.attachments ?? []).some((a) => a?.kind === "image");
 
-  // Cần ÍT NHẤT link video gốc HOẶC một file video đã upload.
-  if (!rawVideoUrl && !hasDriveVideo) {
-    throw new ApiError(400, "Cần link video gốc hoặc file video đã tải lên");
+  // Cần ÍT NHẤT link video gốc HOẶC file video/ảnh đã upload.
+  if (!rawVideoUrl && !hasUploadedVideo && !hasImages) {
+    throw new ApiError(400, "Cần link video gốc hoặc file đã tải lên");
   }
 
   // Canonicalize ở server (lớp chống trùng quyết định nằm ở DB unique index).
