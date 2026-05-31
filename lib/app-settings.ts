@@ -7,6 +7,7 @@ import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 export type SettingGroup =
   | "AI"
   | "Google Drive"
+  | "Google Drive (cá nhân)"
   | "Google Sheet"
   | "Worker"
   | "Hệ thống";
@@ -138,6 +139,30 @@ export const MANAGED_SETTINGS: SettingDef[] = [
       'Vào Cloud Console → Library → bật "Google Sheets API".',
       "Dán <ID> vào ô này.",
     ],
+  },
+  {
+    key: "GOOGLE_OAUTH_CLIENT_ID",
+    label: "Google OAuth Client ID (lưu video vào Drive của bạn)",
+    group: "Google Drive (cá nhân)",
+    isSecret: false,
+    placeholder: "xxxx.apps.googleusercontent.com",
+    help: "Để video lưu vào Drive CÁ NHÂN của bạn (dùng quota 15GB của bạn).",
+    guide: [
+      "console.cloud.google.com → APIs & Services → bật Google Drive API.",
+      "OAuth consent screen: chọn External, thêm email bạn vào Test users.",
+      'Credentials → Create credentials → OAuth client ID → loại "Web application".',
+      "Authorized redirect URIs (KHÔNG phải JavaScript origins) thêm: https://timvideo.vercel.app/api/auth/google/callback",
+      "Copy Client ID dán vào đây, Client Secret dán ô dưới, rồi Lưu cấu hình.",
+      'Cuối cùng bấm nút "Kết nối Google Drive" ở thẻ dưới.',
+    ],
+  },
+  {
+    key: "GOOGLE_OAUTH_CLIENT_SECRET",
+    label: "Google OAuth Client Secret",
+    group: "Google Drive (cá nhân)",
+    isSecret: true,
+    placeholder: "GOCSPX-...",
+    help: "Client Secret của OAuth client ở trên.",
   },
   {
     key: "VIDEO_REVIEW_WORKER_SECRET",
