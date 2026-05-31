@@ -33,8 +33,12 @@ export async function POST(req: NextRequest) {
 
     const body = await readJson<PreviewBody>(req);
     const videoUrl = (body.original_video_url ?? "").trim() || null;
-    const hasVideoFile = Boolean(body.drive?.driveFileId);
-    if (!videoUrl && !hasVideoFile) {
+    // File video upload: Storage trả driveWebUrl (driveFileId=null), Drive cũ trả driveFileId.
+    const hasVideoFile = Boolean(
+      body.drive?.driveFileId || body.drive?.driveWebUrl,
+    );
+    const hasImages = (body.attachments ?? []).some((a) => a?.kind === "image");
+    if (!videoUrl && !hasVideoFile && !hasImages) {
       throw new ApiError(
         400,
         "Cần dán link video hoặc upload file để chấm điểm thử",
