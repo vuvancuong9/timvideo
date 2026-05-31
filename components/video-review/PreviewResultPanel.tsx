@@ -1,10 +1,13 @@
-import { Badge, Card, StatCard } from "@/components/ui";
+import { Badge, Card } from "@/components/ui";
 import {
   RISK_LABELS,
   RISK_COLORS,
-  FINAL_ACTION_LABELS,
-  FINAL_ACTION_COLORS,
-  CONFIDENCE_LABELS,
+  POLICY_RISK_LABELS,
+  SCORE_LABELS,
+  FINAL_ACTION_VERDICT,
+  VERDICT_BG,
+  CONFIDENCE_HINT,
+  scoreWord,
 } from "@/lib/video-intake/labels";
 import type {
   ContentAnalysisResult,
@@ -21,6 +24,25 @@ export type PreviewData = {
   decision: FinalDecisionResult;
 };
 
+function ScoreCard({ label, score }: { label: string; score: number }) {
+  const w = scoreWord(score);
+  const ring: Record<string, string> = {
+    green: "text-green-700",
+    yellow: "text-yellow-700",
+    red: "text-red-600",
+  };
+  return (
+    <Card>
+      <p className="text-sm text-gray-500">{label}</p>
+      <p className="mt-1 text-2xl font-bold text-gray-900">
+        {Number(score).toFixed(0)}
+        <span className="text-base font-medium text-gray-400">/100</span>
+      </p>
+      <p className={`text-xs font-semibold ${ring[w.color]}`}>{w.text}</p>
+    </Card>
+  );
+}
+
 function RiskRow({ label, level }: { label: string; level: RiskLevel }) {
   return (
     <div className="flex items-center justify-between border-b border-gray-100 py-1.5 last:border-0">
@@ -30,11 +52,25 @@ function RiskRow({ label, level }: { label: string; level: RiskLevel }) {
   );
 }
 
-function ListBlock({ title, items }: { title: string; items: string[] }) {
+function ListBlock({
+  title,
+  items,
+  color = "gray",
+}: {
+  title: string;
+  items: string[];
+  color?: "gray" | "red" | "green";
+}) {
   if (!items || items.length === 0) return null;
+  const titleColor =
+    color === "red"
+      ? "text-red-600"
+      : color === "green"
+        ? "text-green-700"
+        : "text-gray-400";
   return (
     <div className="mt-2">
-      <p className="text-xs font-semibold uppercase text-gray-400">{title}</p>
+      <p className={`text-xs font-semibold uppercase ${titleColor}`}>{title}</p>
       <ul className="list-inside list-disc text-sm text-gray-700">
         {items.map((it, i) => (
           <li key={i}>{it}</li>
@@ -46,90 +82,103 @@ function ListBlock({ title, items }: { title: string; items: string[] }) {
 
 export function PreviewResultPanel({ data }: { data: PreviewData }) {
   const { analysis, policy, creative, decision } = data;
+  const verdict = FINAL_ACTION_VERDICT[decision.final_action];
 
   return (
     <div className="mt-6 space-y-4">
-      <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-        ⚠️ Đây là kết quả chấm điểm rủi ro bằng AI (chấm thử, chưa lưu), không
-        đảm bảo 100% quảng cáo sẽ được Meta/Facebook duyệt.
-      </p>
-
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard
-          label="Creative Score"
-          value={Number(creative.creative_score).toFixed(0)}
-        />
-        <StatCard
-          label="FB Policy Safety"
-          value={Number(policy.policy_safety_score).toFixed(0)}
-        />
-        <StatCard
-          label="Copyright Safety"
-          value={Number(policy.copyright_safety_score).toFixed(0)}
-        />
-        <StatCard
-          label="Final Score"
-          value={Number(decision.final_score).toFixed(0)}
-        />
+      {/* KẾT LUẬN TO, DỄ HIỂU NHẤT */}
+      <div className={`rounded-xl border-2 p-5 ${VERDICT_BG[verdict.take]}`}>
+        <p className="text-lg font-bold">{verdict.headline}</p>
+        <p className="mt-1 text-sm">{verdict.detail}</p>
       </div>
 
-      <Card>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-sm font-medium text-gray-600">
-            Hành động đề xuất:
-          </span>
-          <Badge color={FINAL_ACTION_COLORS[decision.final_action]}>
-            {FINAL_ACTION_LABELS[decision.final_action]}
-          </Badge>
-          <span className="text-xs text-gray-400">
-            (độ tin cậy phân tích: {CONFIDENCE_LABELS[analysis.confidence]})
-          </span>
-        </div>
-        {decision.decision_reason && (
-          <p className="mt-2 text-sm text-gray-600">{decision.decision_reason}</p>
-        )}
-        {decision.blocking_reasons.length > 0 && (
-          <ListBlock title="Lý do chặn" items={decision.blocking_reasons} />
-        )}
-      </Card>
+      <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+        ⚠️ Đây là đánh giá bằng AI để tham khảo (chấm thử, chưa lưu). Không đảm
+        bảo 100% Facebook/Meta sẽ duyệt hay từ chối.
+      </p>
 
+      {/* 4 điểm số kèm chữ */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+        <ScoreCard label={SCORE_LABELS.creative} score={creative.creative_score} />
+        <ScoreCard label={SCORE_LABELS.policy} score={policy.policy_safety_score} />
+        <ScoreCard
+          label={SCORE_LABELS.copyright}
+          score={policy.copyright_safety_score}
+        />
+        <ScoreCard label={SCORE_LABELS.final} score={decision.final_score} />
+      </div>
+
+      <p className="text-xs text-gray-500">
+        {CONFIDENCE_HINT[analysis.confidence]}
+      </p>
+
+      {/* Rủi ro chính sách */}
       <Card>
-        <h3 className="mb-3 font-semibold text-gray-900">Rủi ro chính sách</h3>
+        <h3 className="mb-1 font-semibold text-gray-900">
+          Khả năng vi phạm chính sách Facebook
+        </h3>
+        <p className="mb-3 text-xs text-gray-500">
+          “An toàn” = ổn. “Cần lưu ý / Rủi ro cao / Rất nguy hiểm” = nên sửa
+          hoặc bỏ.
+        </p>
         <div className="grid gap-x-8 md:grid-cols-2">
           <div>
-            <RiskRow label="Misleading claim" level={policy.misleading_claim_risk} />
-            <RiskRow label="Health claim" level={policy.health_claim_risk} />
             <RiskRow
-              label="Personal attribute"
+              label={POLICY_RISK_LABELS.misleading_claim_risk}
+              level={policy.misleading_claim_risk}
+            />
+            <RiskRow
+              label={POLICY_RISK_LABELS.health_claim_risk}
+              level={policy.health_claim_risk}
+            />
+            <RiskRow
+              label={POLICY_RISK_LABELS.personal_attribute_risk}
               level={policy.personal_attribute_risk}
             />
-            <RiskRow label="Before/After" level={policy.before_after_risk} />
+            <RiskRow
+              label={POLICY_RISK_LABELS.before_after_risk}
+              level={policy.before_after_risk}
+            />
           </div>
           <div>
             <RiskRow
-              label="Shocking content"
+              label={POLICY_RISK_LABELS.shocking_content_risk}
               level={policy.shocking_content_risk}
             />
             <RiskRow
-              label="Adult/Sensitive"
+              label={POLICY_RISK_LABELS.adult_sensitive_risk}
               level={policy.adult_sensitive_risk}
             />
-            <RiskRow label="IP/Trademark" level={policy.ip_trademark_risk} />
             <RiskRow
-              label="Restricted product"
+              label={POLICY_RISK_LABELS.ip_trademark_risk}
+              level={policy.ip_trademark_risk}
+            />
+            <RiskRow
+              label={POLICY_RISK_LABELS.restricted_product_risk}
               level={policy.restricted_product_risk}
             />
           </div>
         </div>
-        <ListBlock title="Lý do cảnh báo" items={policy.risk_reasons} />
-        <ListBlock title="Đề xuất sửa" items={policy.suggested_fixes} />
+        <ListBlock
+          title="Vì sao có rủi ro"
+          items={policy.risk_reasons}
+          color="red"
+        />
+        <ListBlock
+          title="Cách sửa để an toàn hơn"
+          items={policy.suggested_fixes}
+          color="green"
+        />
       </Card>
 
+      {/* Phân tích & gợi ý */}
       <Card>
-        <h3 className="mb-3 font-semibold text-gray-900">Phân tích & gợi ý</h3>
+        <h3 className="mb-3 font-semibold text-gray-900">
+          Phân tích video & gợi ý cải thiện
+        </h3>
         {analysis.hook_3s && (
           <p className="text-sm">
-            <span className="font-medium text-gray-700">Hook 3s: </span>
+            <span className="font-medium text-gray-700">3 giây đầu: </span>
             {analysis.hook_3s}
           </p>
         )}
@@ -139,13 +188,19 @@ export function PreviewResultPanel({ data }: { data: PreviewData }) {
             {analysis.summary}
           </p>
         )}
+        {analysis.product_detected && (
+          <p className="mt-1 text-sm">
+            <span className="font-medium text-gray-700">Sản phẩm: </span>
+            {analysis.product_detected}
+          </p>
+        )}
         <div className="grid gap-x-8 md:grid-cols-2">
-          <ListBlock title="Cảnh mạnh" items={analysis.strong_scenes} />
-          <ListBlock title="Cảnh yếu" items={analysis.weak_scenes} />
-          <ListBlock title="Góc remake" items={analysis.remake_angles} />
+          <ListBlock title="Điểm mạnh" items={analysis.strong_scenes} color="green" />
+          <ListBlock title="Điểm yếu" items={analysis.weak_scenes} color="red" />
+          <ListBlock title="Ý tưởng làm lại" items={analysis.remake_angles} />
           <ListBlock title="Tiêu đề gợi ý" items={creative.suggested_titles} />
           <ListBlock title="Kịch bản gợi ý" items={creative.suggested_scripts} />
-          <ListBlock title="Chỉnh sửa gợi ý" items={creative.suggested_edits} />
+          <ListBlock title="Nên chỉnh sửa" items={creative.suggested_edits} />
         </div>
       </Card>
     </div>

@@ -7,6 +7,9 @@ import {
   FINAL_ACTION_LABELS,
   FINAL_ACTION_COLORS,
   CONFIDENCE_LABELS,
+  POLICY_RISK_LABELS,
+  FINAL_ACTION_VERDICT,
+  VERDICT_BG,
 } from "@/lib/video-intake/labels";
 import type { SubmissionWithRelations, ReviewBundle } from "@/lib/video-intake/queries";
 import type { RiskLevel } from "@/types/videoReview";
