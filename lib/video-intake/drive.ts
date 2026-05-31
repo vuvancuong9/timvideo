@@ -1,39 +1,21 @@
 /**
  * Google Drive upload cho module video-intake.
- * Tái dùng resumable-session từ lib/drive.ts (đã có sẵn từ module trước),
- * bổ sung tải file tạm về buffer để worker extract (giới hạn kích thước).
+ * Tái dùng resumable-session + JWT auth từ lib/drive.ts, bổ sung tải file tạm
+ * về buffer để worker extract (giới hạn kích thước).
  */
 export {
   createResumableUploadSession,
   finalizeDriveFile,
   getDriveFolderId,
+  getDriveJwtAuth,
   type DriveFileMeta,
 } from "@/lib/drive";
 
 import { google } from "googleapis";
-import { ApiError } from "@/lib/http";
-
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
+import { getDriveJwtAuth } from "@/lib/drive";
 
 /** Giới hạn tải file về server để extract (MVP). Trên ngưỡng này worker bỏ qua. */
 export const MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024; // 100MB
-
-function getJwtAuth() {
-  const clientEmail = process.env.GOOGLE_DRIVE_CLIENT_EMAIL;
-  const privateKey = process.env.GOOGLE_DRIVE_PRIVATE_KEY;
-  if (!clientEmail || !privateKey) {
-    throw new ApiError(
-      500,
-      "Chưa cấu hình Google Drive (GOOGLE_DRIVE_CLIENT_EMAIL / GOOGLE_DRIVE_PRIVATE_KEY).",
-      "DRIVE_NOT_CONFIGURED",
-    );
-  }
-  return new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey.replace(/\\n/g, "\n"),
-    scopes: [DRIVE_SCOPE],
-  });
-}
 
 export type DriveFileInfo = {
   id: string;
@@ -45,7 +27,7 @@ export type DriveFileInfo = {
 
 /** Lấy metadata file Drive (không tải nội dung). */
 export async function getDriveFileInfo(fileId: string): Promise<DriveFileInfo> {
-  const auth = getJwtAuth();
+  const auth = await getDriveJwtAuth();
   const drive = google.drive({ version: "v3", auth });
   const { data } = await drive.files.get({
     fileId,
@@ -73,7 +55,7 @@ export async function downloadDriveFileBuffer(
   if (info.sizeBytes && info.sizeBytes > maxBytes) {
     return null;
   }
-  const auth = getJwtAuth();
+  const auth = await getDriveJwtAuth();
   const drive = google.drive({ version: "v3", auth });
   const res = await drive.files.get(
     { fileId, alt: "media", supportsAllDrives: true },

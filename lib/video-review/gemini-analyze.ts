@@ -26,7 +26,7 @@ export type GeminiAnalyzeOutput = {
 export async function analyzeContentWithGemini(
   input: ContentAnalysisPromptInput,
 ): Promise<GeminiAnalyzeOutput> {
-  const { apiKey, model } = getGeminiConfig();
+  const { apiKey, model } = await getGeminiConfig();
   if (!apiKey) {
     throw new Error("Thiếu GEMINI_API_KEY để phân tích nội dung video");
   }

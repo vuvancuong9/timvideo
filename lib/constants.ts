@@ -73,7 +73,7 @@ export const NAV_BY_ROLE: Record<UserRole, NavSection[]> = {
         { href: "/admin/categories", label: "Danh mục" },
         { href: "/admin/affiliate-accounts", label: "Tài khoản affiliate" },
         { href: "/admin/audit-logs", label: "Audit log" },
-        { href: "/admin/settings", label: "Cấu hình" },
+        { href: "/admin/settings", label: "API & Cấu hình" },
       ],
     },
   ],

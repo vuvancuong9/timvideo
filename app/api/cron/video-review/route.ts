@@ -12,7 +12,7 @@ export const maxDuration = 60;
 // hoặc Vercel Cron (gửi header x-vercel-cron). Nếu chưa set secret -> chỉ cho Vercel cron.
 export async function GET(req: NextRequest) {
   try {
-    const secret = getWorkerSecret();
+    const secret = await getWorkerSecret();
     const auth = req.headers.get("authorization") ?? "";
     const isVercelCron = req.headers.has("x-vercel-cron");
     const bearerOk = secret ? auth === `Bearer ${secret}` : false;

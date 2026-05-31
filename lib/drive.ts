@@ -1,13 +1,15 @@
 import { google } from "googleapis";
 import { ApiError } from "@/lib/http";
+import { getSetting } from "@/lib/secrets";
 
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 const RESUMABLE_ENDPOINT =
   "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,webViewLink,parents";
 
-function getJwtAuth() {
-  const clientEmail = process.env.GOOGLE_DRIVE_CLIENT_EMAIL;
-  const privateKey = process.env.GOOGLE_DRIVE_PRIVATE_KEY;
+/** JWT auth Drive — đọc credential từ app_settings (DB) hoặc env. */
+export async function getDriveJwtAuth() {
+  const clientEmail = await getSetting("GOOGLE_DRIVE_CLIENT_EMAIL");
+  const privateKey = await getSetting("GOOGLE_DRIVE_PRIVATE_KEY");
   if (!clientEmail || !privateKey) {
     throw new ApiError(
       500,
@@ -22,8 +24,8 @@ function getJwtAuth() {
   });
 }
 
-export function getDriveFolderId(): string {
-  const folderId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+export async function getDriveFolderId(): Promise<string> {
+  const folderId = await getSetting("GOOGLE_DRIVE_FOLDER_ID");
   if (!folderId) {
     throw new ApiError(
       500,
@@ -35,16 +37,16 @@ export function getDriveFolderId(): string {
 }
 
 /**
- * Tạo phiên resumable upload. Trả về uploadUrl để client PUT thẳng file lên
- * Google (KHÔNG proxy bytes qua server). File nằm trong GOOGLE_DRIVE_FOLDER_ID.
+ * Tạo phiên resumable upload. Trả uploadUrl để client PUT thẳng file lên Google
+ * (KHÔNG proxy bytes qua server). File nằm trong GOOGLE_DRIVE_FOLDER_ID.
  */
 export async function createResumableUploadSession(params: {
   fileName: string;
   mimeType: string;
   fileSize?: number;
 }): Promise<{ uploadUrl: string; folderId: string }> {
-  const auth = getJwtAuth();
-  const folderId = getDriveFolderId();
+  const auth = await getDriveJwtAuth();
+  const folderId = await getDriveFolderId();
   const creds = await auth.authorize();
   const accessToken = creds.access_token;
   if (!accessToken) {
@@ -87,11 +89,9 @@ export type DriveFileMeta = {
   driveFolderId: string | null;
 };
 
-/**
- * Sau khi client upload xong: cấp quyền xem theo link + lấy metadata file.
- */
+/** Sau khi client upload xong: cấp quyền xem theo link + lấy metadata file. */
 export async function finalizeDriveFile(fileId: string): Promise<DriveFileMeta> {
-  const auth = getJwtAuth();
+  const auth = await getDriveJwtAuth();
   const drive = google.drive({ version: "v3", auth });
 
   try {
@@ -114,6 +114,6 @@ export async function finalizeDriveFile(fileId: string): Promise<DriveFileMeta> 
     driveFileId: data.id ?? fileId,
     driveFileName: data.name ?? null,
     driveWebUrl: data.webViewLink ?? null,
-    driveFolderId: data.parents?.[0] ?? getDriveFolderId(),
+    driveFolderId: data.parents?.[0] ?? (await getDriveFolderId()),
   };
 }

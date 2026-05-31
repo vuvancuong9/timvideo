@@ -1,55 +1,75 @@
 /**
- * Đọc secret/config cho server. Hiện tại repo CHƯA có bảng app_secrets
- * DB-backed, nên đọc trực tiếp từ process.env (không hardcode giá trị).
+ * Đọc secret/config cho server: ƯU TIÊN DB (bảng app_settings, qua service role),
+ * FALLBACK process.env. Cache 60s để giảm round-trip.
  *
- * Thiết kế sẵn lớp cache TTL để sau này dễ chuyển sang DB-backed:
- * chỉ cần thay readRaw() để đọc DB trước, fallback env.
+ * SUPABASE_SERVICE_ROLE_KEY / NEXT_PUBLIC_SUPABASE_* / ADMIN_EMAILS luôn đọc
+ * thẳng từ env (không nằm trong app_settings) vì cần để kết nối DB trước.
  *
  * TUYỆT ĐỐI chỉ dùng phía server.
  */
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
-type CacheEntry = { value: string | undefined; at: number };
+let cache: Map<string, string> | null = null;
+let cacheAt = 0;
 const TTL_MS = 60_000;
-const cache = new Map<string, CacheEntry>();
 
-function readRaw(key: string): string | undefined {
-  // TODO(app_secrets): nếu sau này có bảng app_secrets, đọc DB ở đây trước,
-  // rồi fallback về process.env. Hiện tại env-only.
-  const v = process.env[key];
-  return v && v.length > 0 ? v : undefined;
-}
-
-export function getSecret(key: string): string | undefined {
-  const now = Date.now();
-  const hit = cache.get(key);
-  if (hit && now - hit.at < TTL_MS) return hit.value;
-  const value = readRaw(key);
-  cache.set(key, { value, at: now });
-  return value;
-}
-
-export function requireSecret(key: string): string {
-  const v = getSecret(key);
-  if (!v) {
-    throw new Error(`Thiếu cấu hình bắt buộc: ${key}`);
+async function loadFromDb(): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data } = await admin.from("app_settings").select("key,value");
+    for (const r of data ?? []) {
+      if (r.value && r.value.length > 0) map.set(r.key, r.value);
+    }
+  } catch {
+    // Thiếu service role / bảng chưa có → bỏ qua, fallback env.
   }
+  return map;
+}
+
+async function ensureLoaded(): Promise<Map<string, string>> {
+  const now = Date.now();
+  if (cache && now - cacheAt < TTL_MS) return cache;
+  cache = await loadFromDb();
+  cacheAt = now;
+  return cache;
+}
+
+/** Gọi sau khi admin cập nhật settings để áp dụng ngay (không chờ TTL). */
+export function invalidateSettingsCache(): void {
+  cache = null;
+  cacheAt = 0;
+}
+
+/** Lấy 1 setting: DB trước, env sau. */
+export async function getSetting(key: string): Promise<string | undefined> {
+  const map = await ensureLoaded();
+  const dbVal = map.get(key);
+  if (dbVal && dbVal.length > 0) return dbVal;
+  const envVal = process.env[key];
+  return envVal && envVal.length > 0 ? envVal : undefined;
+}
+
+export async function requireSetting(key: string): Promise<string> {
+  const v = await getSetting(key);
+  if (!v) throw new Error(`Thiếu cấu hình bắt buộc: ${key}`);
   return v;
 }
 
-export function getOpenAIConfig() {
+export async function getOpenAIConfig() {
   return {
-    apiKey: getSecret("OPENAI_API_KEY"),
-    model: getSecret("OPENAI_MODEL") ?? "gpt-4o-mini",
+    apiKey: await getSetting("OPENAI_API_KEY"),
+    model: (await getSetting("OPENAI_MODEL")) ?? "gpt-4o-mini",
   };
 }
 
-export function getGeminiConfig() {
+export async function getGeminiConfig() {
   return {
-    apiKey: getSecret("GEMINI_API_KEY"),
-    model: getSecret("GEMINI_MODEL") ?? "gemini-2.5-flash",
+    apiKey: await getSetting("GEMINI_API_KEY"),
+    model: (await getSetting("GEMINI_MODEL")) ?? "gemini-2.5-flash",
   };
 }
 
-export function getWorkerSecret(): string | undefined {
-  return getSecret("VIDEO_REVIEW_WORKER_SECRET");
+export async function getWorkerSecret(): Promise<string | undefined> {
+  return getSetting("VIDEO_REVIEW_WORKER_SECRET");
 }

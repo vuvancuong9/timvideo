@@ -1,5 +1,7 @@
 import { requireRole } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getManagedSettingsStatus } from "@/lib/app-settings";
+import { IntegrationSettingsClient } from "@/components/admin/IntegrationSettingsClient";
 import { SalesImportClient } from "@/components/admin/SalesImportClient";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { ROLE_LABELS } from "@/lib/constants";
@@ -9,15 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminSettingsPage() {
   await requireRole(["admin"]);
 
-  const driveConfigured = Boolean(
-    process.env.GOOGLE_DRIVE_CLIENT_EMAIL &&
-      process.env.GOOGLE_DRIVE_PRIVATE_KEY &&
-      process.env.GOOGLE_DRIVE_FOLDER_ID,
-  );
-  const adminEmailCount = (process.env.ADMIN_EMAILS ?? "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean).length;
+  const { managed, system } = await getManagedSettingsStatus();
 
   const supabase = await createSupabaseServerClient();
   const { data: employees } = await supabase
@@ -28,25 +22,40 @@ export default async function AdminSettingsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Cấu hình hệ thống"
-        description="Trạng thái cấu hình & nhập doanh số."
+        title="Cấu hình & API"
+        description="Quản lý API key, Google Drive, Google Sheet (chỉ admin)."
       />
 
+      {/* API keys & tích hợp — DB-backed, chỉ admin */}
+      <section>
+        <h2 className="mb-3 text-lg font-bold text-gray-900">
+          API keys & tích hợp
+        </h2>
+        <IntegrationSettingsClient managed={managed} />
+      </section>
+
+      {/* Trạng thái hạ tầng (env Vercel, read-only) */}
       <Card>
-        <h2 className="mb-3 font-semibold text-gray-900">Trạng thái cấu hình</h2>
+        <h2 className="mb-3 font-semibold text-gray-900">
+          Hạ tầng (đặt ở Vercel env — chỉ xem)
+        </h2>
         <ul className="space-y-2 text-sm">
-          <li className="flex items-center gap-2">
-            Google Drive:{" "}
-            {driveConfigured ? (
-              <Badge color="green">Đã cấu hình</Badge>
-            ) : (
-              <Badge color="red">Chưa cấu hình</Badge>
-            )}
-          </li>
-          <li className="flex items-center gap-2">
-            Số email admin (ADMIN_EMAILS):{" "}
-            <span className="font-semibold">{adminEmailCount}</span>
-          </li>
+          {system.map((s) => (
+            <li key={s.key} className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-gray-700">{s.label}</span>
+              <code className="text-xs text-gray-400">{s.key}</code>
+              {s.hasValue ? (
+                <Badge color="green">Đã cấu hình</Badge>
+              ) : (
+                <Badge color="red">Chưa cấu hình</Badge>
+              )}
+              {s.preview && (
+                <span className="font-mono text-xs text-gray-400">
+                  {s.preview}
+                </span>
+              )}
+            </li>
+          ))}
         </ul>
       </Card>
 

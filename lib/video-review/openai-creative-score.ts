@@ -27,7 +27,7 @@ export type OpenAICreativeOutput = {
 export async function scoreCreativeWithOpenAI(
   input: CreativePromptInput,
 ): Promise<OpenAICreativeOutput> {
-  const { apiKey, model } = getOpenAIConfig();
+  const { apiKey, model } = await getOpenAIConfig();
   if (!apiKey) {
     throw new Error("Thiếu OPENAI_API_KEY để chấm điểm sáng tạo");
   }

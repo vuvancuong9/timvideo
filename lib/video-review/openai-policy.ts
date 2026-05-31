@@ -28,7 +28,7 @@ export type OpenAIPolicyOutput = {
 export async function checkPolicyWithOpenAI(
   input: PolicyPromptInput,
 ): Promise<OpenAIPolicyOutput> {
-  const { apiKey, model } = getOpenAIConfig();
+  const { apiKey, model } = await getOpenAIConfig();
   if (!apiKey) {
     throw new Error("Thiếu OPENAI_API_KEY để kiểm tra chính sách");
   }
