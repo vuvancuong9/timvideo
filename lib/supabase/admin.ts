@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
+import { ApiError } from "@/lib/http";
 
 /**
  * Supabase client dùng SERVICE ROLE KEY — BỎ QUA RLS.
@@ -15,8 +16,10 @@ export function createSupabaseAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !serviceKey) {
-    throw new Error(
-      "Thiếu NEXT_PUBLIC_SUPABASE_URL hoặc SUPABASE_SERVICE_ROLE_KEY trong môi trường.",
+    throw new ApiError(
+      500,
+      "Chưa cấu hình SUPABASE_SERVICE_ROLE_KEY trên Vercel. Vào Vercel → Project timvideo → Settings → Environment Variables, thêm biến SUPABASE_SERVICE_ROLE_KEY (lấy tại Supabase → Project Settings → API → service_role secret), rồi Redeploy.",
+      "SERVICE_ROLE_MISSING",
     );
   }
   return createClient<Database>(url, serviceKey, {
