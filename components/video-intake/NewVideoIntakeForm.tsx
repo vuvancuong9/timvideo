@@ -5,6 +5,10 @@ import { useRouter } from "next/navigation";
 import { detectVideoSource } from "@/lib/video-intake/normalize-url";
 import { SOURCE_TYPE_LABELS } from "@/lib/video-intake/labels";
 import { formatCurrency } from "@/lib/format";
+import {
+  PreviewResultPanel,
+  type PreviewData,
+} from "@/components/video-review/PreviewResultPanel";
 import type { VideoSourceType } from "@/types/videoIntake";
 
 type Category = { id: string; name: string };
@@ -82,6 +86,12 @@ export function NewVideoIntakeForm({
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Chấm điểm thử
+  const [scoring, setScoring] = useState(false);
+  const [preview, setPreview] = useState<PreviewData | null>(null);
+  // Cache kết quả upload Drive để không upload 2 lần (preview + submit).
+  const driveCache = useRef<{ file: File; meta: DriveMeta } | null>(null);
+
   const isDrive = sourceType === "drive_upload";
 
   // auto-detect nguồn từ URL nếu user chưa chỉnh tay
@@ -133,6 +143,10 @@ export function NewVideoIntakeForm({
   }, [videoUrl, isDrive]);
 
   async function uploadToDrive(f: File): Promise<DriveMeta> {
+    // dùng lại nếu đã upload chính file này (vd vừa chấm thử xong rồi submit)
+    if (driveCache.current && driveCache.current.file === f) {
+      return driveCache.current.meta;
+    }
     setProgress(0);
     const sessionRes = await fetch("/api/uploads/drive/create-session", {
       method: "POST",
@@ -163,7 +177,54 @@ export function NewVideoIntakeForm({
     if (!completeRes.ok) {
       throw new Error(completeJson.error || "Không hoàn tất upload Drive");
     }
-    return completeJson.drive as DriveMeta;
+    const meta = completeJson.drive as DriveMeta;
+    driveCache.current = { file: f, meta };
+    return meta;
+  }
+
+  // Chấm điểm thử NGAY (Gemini + ChatGPT), không lưu DB.
+  async function onScore() {
+    setError(null);
+    setPreview(null);
+    if (!isDrive && !videoUrl.trim()) {
+      setError("Dán link video hoặc chọn nguồn Drive + upload file để chấm thử.");
+      return;
+    }
+    if (isDrive && !file) {
+      setError("Vui lòng chọn file video để chấm thử.");
+      return;
+    }
+    setScoring(true);
+    try {
+      let drive: DriveMeta | null = null;
+      if (file) drive = await uploadToDrive(file);
+      const res = await fetch("/api/video-review/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shopee_product_url: shopeeUrl,
+          product_price: price,
+          commission_percent: percent,
+          category_id: categoryId || null,
+          source_type: sourceType,
+          original_video_url: isDrive ? null : videoUrl,
+          drive,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(
+          [json.error, json.detail].filter(Boolean).join(" — ") ||
+            "Chấm điểm thất bại",
+        );
+      }
+      setPreview(json.preview as PreviewData);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
+    } finally {
+      setScoring(false);
+      setProgress(null);
+    }
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -374,13 +435,29 @@ export function NewVideoIntakeForm({
         </p>
       )}
 
-      <button
-        type="submit"
-        disabled={disabled}
-        className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-      >
-        {submitting ? "Đang lưu…" : "Gửi video"}
-      </button>
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="submit"
+          disabled={disabled || scoring}
+          className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {submitting ? "Đang lưu…" : "Gửi video"}
+        </button>
+        <button
+          type="button"
+          onClick={onScore}
+          disabled={scoring || submitting || duplicate}
+          className="rounded-lg border border-brand px-5 py-2.5 text-sm font-semibold text-brand transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {scoring ? "Đang chấm điểm…" : "🎯 Chấm điểm thử ngay"}
+        </button>
+        <span className="text-xs text-gray-400">
+          Chấm thử bằng AI (Gemini + ChatGPT), không lưu — để xem video thế nào
+          trước khi gửi.
+        </span>
+      </div>
+
+      {preview && <PreviewResultPanel data={preview} />}
     </form>
   );
 }
