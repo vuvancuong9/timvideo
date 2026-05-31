@@ -55,7 +55,14 @@ function putFileWithProgress(
   });
 }
 
-export function NewVideoIntakeForm({ categories }: { categories: Category[] }) {
+export function NewVideoIntakeForm({
+  categories,
+  redirectTo = "/staff/my-videos",
+}: {
+  categories: Category[];
+  /** Trang chuyển tới sau khi submit thành công. */
+  redirectTo?: string;
+}) {
   const router = useRouter();
 
   const [shopeeUrl, setShopeeUrl] = useState("");
@@ -197,7 +204,7 @@ export function NewVideoIntakeForm({ categories }: { categories: Category[] }) {
       if (!res.ok) {
         throw new Error(json.error || "Lưu video thất bại");
       }
-      router.push("/staff/my-videos");
+      router.push(redirectTo);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
