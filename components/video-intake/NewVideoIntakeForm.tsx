@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { detectVideoSource } from "@/lib/video-intake/normalize-url";
 import { SOURCE_TYPE_LABELS } from "@/lib/video-intake/labels";
 import { formatCurrency } from "@/lib/format";
@@ -16,11 +17,12 @@ import type {
 
 type Category = { id: string; name: string };
 
-type DriveMeta = {
-  driveFileId: string;
-  driveFileName: string | null;
-  driveWebUrl: string | null;
-  driveFolderId: string | null;
+/** Metadata 1 file đã upload lên Supabase Storage. */
+type UploadedFile = {
+  publicUrl: string;
+  name: string;
+  mimeType: string;
+  kind: "video" | "image";
 };
 
 const SOURCE_OPTIONS: VideoSourceType[] = [
@@ -36,34 +38,6 @@ function isImageFile(f: File): boolean {
 }
 function isVideoFile(f: File): boolean {
   return f.type.startsWith("video/");
-}
-
-function putFileWithProgress(
-  url: string,
-  file: File,
-  onProgress: (pct: number) => void,
-): Promise<{ id?: string }> {
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open("PUT", url, true);
-    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-    };
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          resolve(JSON.parse(xhr.responseText));
-        } catch {
-          resolve({});
-        }
-      } else {
-        reject(new Error(`Upload Drive thất bại (${xhr.status})`));
-      }
-    };
-    xhr.onerror = () => reject(new Error("Lỗi mạng khi upload lên Drive"));
-    xhr.send(file);
-  });
 }
 
 export function NewVideoIntakeForm({
@@ -90,20 +64,18 @@ export function NewVideoIntakeForm({
   const [dupMsg, setDupMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [uploadInfo, setUploadInfo] = useState<string | null>(null);
-  const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [scoring, setScoring] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
 
-  // Cache file -> meta để không upload 2 lần (chấm thử rồi gửi).
-  const driveCache = useRef<Map<File, DriveMeta>>(new Map());
+  // Cache file -> đã upload, để chấm thử rồi gửi không upload lại.
+  const uploadCache = useRef<Map<File, UploadedFile>>(new Map());
 
   const hasLink = videoUrl.trim().length > 0;
   const hasVideoFile = files.some(isVideoFile);
   const imageCount = files.filter(isImageFile).length;
 
-  // auto-detect nguồn từ link nếu user chưa chỉnh tay
   useEffect(() => {
     if (sourceTouched) return;
     if (videoUrl.trim()) setSourceType(detectVideoSource(videoUrl));
@@ -124,7 +96,6 @@ export function NewVideoIntakeForm({
 
   const lastChecked = useRef("");
 
-  // debounce 500ms check trùng (chỉ khi có link)
   useEffect(() => {
     const url = videoUrl.trim();
     setDuplicate(false);
@@ -149,7 +120,7 @@ export function NewVideoIntakeForm({
           setDupMsg(`Video này đã có người nhập rồi${by}.`);
         }
       } catch {
-        // bỏ qua, server vẫn chặn khi submit
+        // server vẫn chặn khi submit
       } finally {
         setChecking(false);
       }
@@ -157,84 +128,89 @@ export function NewVideoIntakeForm({
     return () => clearTimeout(t);
   }, [videoUrl]);
 
-  async function uploadOne(f: File): Promise<DriveMeta> {
-    const cached = driveCache.current.get(f);
+  /** Upload 1 file lên Supabase Storage qua signed URL. */
+  async function uploadOne(f: File): Promise<UploadedFile> {
+    const cached = uploadCache.current.get(f);
     if (cached) return cached;
-    setProgress(0);
-    const sessionRes = await fetch("/api/uploads/drive/create-session", {
+
+    const sessionRes = await fetch("/api/uploads/storage/create-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fileName: f.name,
-        mimeType: f.type || "application/octet-stream",
-        fileSize: f.size,
-      }),
+      body: JSON.stringify({ fileName: f.name }),
     });
     const sessionJson = await sessionRes.json();
     if (!sessionRes.ok) {
       throw new Error(
         [sessionJson.error, sessionJson.detail].filter(Boolean).join(" — ") ||
-          "Không tạo được phiên upload Drive",
+          "Không tạo được phiên upload",
       );
     }
-    const uploaded = await putFileWithProgress(
-      sessionJson.uploadUrl,
-      f,
-      setProgress,
-    );
-    const fileId = uploaded.id;
-    if (!fileId) throw new Error("Google Drive không trả về fileId");
-    const completeRes = await fetch("/api/uploads/drive/complete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileId }),
-    });
-    const completeJson = await completeRes.json();
-    if (!completeRes.ok) {
-      throw new Error(
-        [completeJson.error, completeJson.detail].filter(Boolean).join(" — ") ||
-          "Không hoàn tất upload Drive",
-      );
+
+    const supabase = createSupabaseBrowserClient();
+    const { error: upErr } = await supabase.storage
+      .from(sessionJson.bucket)
+      .uploadToSignedUrl(sessionJson.path, sessionJson.token, f, {
+        contentType: f.type || "application/octet-stream",
+      });
+    if (upErr) {
+      throw new Error(`Upload thất bại: ${upErr.message}`);
     }
-    const meta = completeJson.drive as DriveMeta;
-    driveCache.current.set(f, meta);
+
+    const meta: UploadedFile = {
+      publicUrl: sessionJson.publicUrl,
+      name: f.name,
+      mimeType: f.type || "application/octet-stream",
+      kind: isImageFile(f) ? "image" : "video",
+    };
+    uploadCache.current.set(f, meta);
     return meta;
   }
 
-  /** Upload tất cả file → {primary video, danh sách attachments}. */
+  /** Upload tất cả file → {primary video meta cho cột drive_*, danh sách attachments}. */
   async function uploadAll(): Promise<{
-    primary: DriveMeta | null;
+    primary: {
+      driveFileId: null;
+      driveFileName: string | null;
+      driveWebUrl: string | null;
+      driveFolderId: null;
+    } | null;
     attachments: SubmissionAttachment[];
   }> {
     const attachments: SubmissionAttachment[] = [];
-    let primary: DriveMeta | null = null;
+    let primaryVideo: UploadedFile | null = null;
     let done = 0;
     for (const f of files) {
       setUploadInfo(`Đang tải lên ${done + 1}/${files.length}: ${f.name}`);
       const meta = await uploadOne(f);
-      const kind: "video" | "image" = isImageFile(f) ? "image" : "video";
       attachments.push({
-        drive_file_id: meta.driveFileId,
-        name: meta.driveFileName,
-        web_url: meta.driveWebUrl,
-        mime_type: f.type || null,
-        kind,
+        drive_file_id: "",
+        name: meta.name,
+        web_url: meta.publicUrl,
+        mime_type: meta.mimeType,
+        kind: meta.kind,
       });
-      if (kind === "video" && !primary) primary = meta;
+      if (meta.kind === "video" && !primaryVideo) primaryVideo = meta;
       done += 1;
     }
     setUploadInfo(null);
+    const primary = primaryVideo
+      ? {
+          driveFileId: null as null,
+          driveFileName: primaryVideo.name,
+          driveWebUrl: primaryVideo.publicUrl,
+          driveFolderId: null as null,
+        }
+      : null;
     return { primary, attachments };
   }
 
   function validateInputs(): string | null {
     if (!hasLink && !hasVideoFile) {
-      return "Cần dán link video HOẶC tải lên file video để chấm/gửi. (Ảnh chỉ là dữ liệu bổ sung.)";
+      return "Cần dán link video HOẶC tải lên file video. (Ảnh chỉ là dữ liệu bổ sung.)";
     }
     return null;
   }
 
-  // Chấm điểm thử NGAY (Gemini + ChatGPT), không lưu DB.
   async function onScore() {
     setError(null);
     setPreview(null);
@@ -245,7 +221,7 @@ export function NewVideoIntakeForm({
     }
     setScoring(true);
     try {
-      let primary: DriveMeta | null = null;
+      let primary = null;
       let attachments: SubmissionAttachment[] = [];
       if (files.length) ({ primary, attachments } = await uploadAll());
       const res = await fetch("/api/video-review/preview", {
@@ -274,7 +250,7 @@ export function NewVideoIntakeForm({
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
     } finally {
       setScoring(false);
-      setProgress(null);
+      setUploadInfo(null);
     }
   }
 
@@ -292,7 +268,7 @@ export function NewVideoIntakeForm({
     }
     setSubmitting(true);
     try {
-      let primary: DriveMeta | null = null;
+      let primary = null;
       let attachments: SubmissionAttachment[] = [];
       if (files.length) ({ primary, attachments } = await uploadAll());
 
@@ -320,7 +296,6 @@ export function NewVideoIntakeForm({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
       setSubmitting(false);
-      setProgress(null);
       setUploadInfo(null);
     }
   }
@@ -478,17 +453,6 @@ export function NewVideoIntakeForm({
           )}
           {uploadInfo && (
             <p className="mt-1 text-xs text-gray-500">{uploadInfo}</p>
-          )}
-          {progress !== null && (
-            <div className="mt-2">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-gray-200">
-                <div
-                  className="h-full bg-brand transition-all"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-              <p className="mt-1 text-xs text-gray-500">Đang tải {progress}%</p>
-            </div>
           )}
         </Field>
 

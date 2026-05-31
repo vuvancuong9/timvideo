@@ -88,7 +88,10 @@ async function processClaimedJob(
     .update({ status: "processing" })
     .eq("id", submission.id);
 
-  const hasVideoFile = Boolean(submission.drive_file_id);
+  // Có file video nếu có drive_file_id (Drive cũ) hoặc drive_web_url (Storage mới).
+  const hasVideoFile = Boolean(
+    submission.drive_file_id || submission.drive_web_url,
+  );
 
   // STAGE 2: EXTRACT (MVP: chỉ metadata Drive, KHÔNG fake transcript/OCR)
   await setStage(db, job.id, "extract");
@@ -96,9 +99,9 @@ async function processClaimedJob(
     source_type: submission.source_type,
     has_video_file: hasVideoFile,
     extract_note:
-      "MVP: chua cat frame/audio/transcript/OCR. Chi lay metadata file Drive neu co.",
+      "MVP: chua cat frame/audio/transcript/OCR. File luu o Supabase Storage; anh dinh kem duoc dua vao Gemini.",
   };
-  let durationSeconds: number | null = null;
+  const durationSeconds: number | null = null;
   if (hasVideoFile && submission.drive_file_id) {
     try {
       const info = await getDriveFileInfo(submission.drive_file_id);
