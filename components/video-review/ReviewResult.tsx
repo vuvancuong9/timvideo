@@ -131,23 +131,23 @@ export function ReviewResult({
       {decision && (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatCard
-            label="Creative Score"
+            label="Điểm bán hàng"
             value={creative ? Number(creative.creative_score).toFixed(0) : "—"}
           />
           <StatCard
-            label="FB Policy Safety"
+            label="An toàn chính sách FB"
             value={
               policy ? Number(policy.policy_safety_score).toFixed(0) : "—"
             }
           />
           <StatCard
-            label="Copyright Safety"
+            label="An toàn bản quyền"
             value={
               policy ? Number(policy.copyright_safety_score).toFixed(0) : "—"
             }
           />
           <StatCard
-            label="Final Score"
+            label="Điểm tổng"
             value={Number(decision.final_score).toFixed(0)}
           />
         </div>
@@ -186,44 +186,47 @@ export function ReviewResult({
       {/* Policy risk panel */}
       {policy && (
         <Card>
-          <h2 className="mb-3 font-semibold text-gray-900">
-            Rủi ro chính sách (confidence:{" "}
-            {CONFIDENCE_LABELS[policy.confidence]})
+          <h2 className="mb-1 font-semibold text-gray-900">
+            Khả năng vi phạm chính sách Facebook
           </h2>
+          <p className="mb-3 text-xs text-gray-500">
+            “An toàn” = ổn. “Cần lưu ý / Rủi ro cao / Rất nguy hiểm” = nên sửa
+            hoặc bỏ. (Độ tin cậy: {CONFIDENCE_LABELS[policy.confidence]})
+          </p>
           <div className="grid gap-x-8 md:grid-cols-2">
             <div>
               <RiskRow
-                label="Misleading claim"
+                label={POLICY_RISK_LABELS.misleading_claim_risk}
                 level={policy.misleading_claim_risk}
               />
               <RiskRow
-                label="Health claim"
+                label={POLICY_RISK_LABELS.health_claim_risk}
                 level={policy.health_claim_risk}
               />
               <RiskRow
-                label="Personal attribute"
+                label={POLICY_RISK_LABELS.personal_attribute_risk}
                 level={policy.personal_attribute_risk}
               />
               <RiskRow
-                label="Before/After"
+                label={POLICY_RISK_LABELS.before_after_risk}
                 level={policy.before_after_risk}
               />
             </div>
             <div>
               <RiskRow
-                label="Shocking content"
+                label={POLICY_RISK_LABELS.shocking_content_risk}
                 level={policy.shocking_content_risk}
               />
               <RiskRow
-                label="Adult/Sensitive"
+                label={POLICY_RISK_LABELS.adult_sensitive_risk}
                 level={policy.adult_sensitive_risk}
               />
               <RiskRow
-                label="IP/Trademark"
+                label={POLICY_RISK_LABELS.ip_trademark_risk}
                 level={policy.ip_trademark_risk}
               />
               <RiskRow
-                label="Restricted product"
+                label={POLICY_RISK_LABELS.restricted_product_risk}
                 level={policy.restricted_product_risk}
               />
             </div>
@@ -231,13 +234,13 @@ export function ReviewResult({
 
           {jsonToStrings(policy.risk_reasons).length > 0 && (
             <ListBlock
-              title="Lý do cảnh báo"
+              title="Vì sao có rủi ro"
               items={jsonToStrings(policy.risk_reasons)}
             />
           )}
           {jsonToStrings(policy.suggested_fixes).length > 0 && (
             <ListBlock
-              title="Đề xuất sửa"
+              title="Cách sửa để an toàn hơn"
               items={jsonToStrings(policy.suggested_fixes)}
             />
           )}
@@ -248,11 +251,11 @@ export function ReviewResult({
       {analysis && (
         <Card>
           <h2 className="mb-3 font-semibold text-gray-900">
-            Phân tích nội dung (confidence:{" "}
+            Phân tích video & gợi ý cải thiện (độ tin cậy:{" "}
             {CONFIDENCE_LABELS[analysis.confidence]})
           </h2>
           {analysis.hook_3s && (
-            <Info label="Hook 3s">{analysis.hook_3s}</Info>
+            <Info label="3 giây đầu">{analysis.hook_3s}</Info>
           )}
           {analysis.summary && (
             <Info label="Tóm tắt">{analysis.summary}</Info>
@@ -264,15 +267,15 @@ export function ReviewResult({
           )}
           <div className="mt-2 grid gap-x-8 md:grid-cols-2">
             <ListBlock
-              title="Cảnh mạnh"
+              title="Điểm mạnh"
               items={jsonToStrings(analysis.strong_scenes)}
             />
             <ListBlock
-              title="Cảnh yếu"
+              title="Điểm yếu"
               items={jsonToStrings(analysis.weak_scenes)}
             />
             <ListBlock
-              title="Góc remake"
+              title="Ý tưởng làm lại"
               items={jsonToStrings(analysis.remake_angles)}
             />
           </div>
