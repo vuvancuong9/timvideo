@@ -30,7 +30,10 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = await createSupabaseServerClient();
-    const result = await createSubmissionWithJob(supabase, session.userId, body);
+    const result = await createSubmissionWithJob(supabase, session.userId, body, {
+      email: session.email,
+      fullName: session.profile.full_name,
+    });
     return jsonOk(result, { status: 201 });
   } catch (e) {
     return handleApiError(e);

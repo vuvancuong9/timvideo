@@ -6,6 +6,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { canonicalizeForDedup } from "@/lib/video-intake/duplicate";
+import {
+  accountSlug,
+  vnDateCompact,
+  nextSubId,
+} from "@/lib/video-intake/sub-id";
 import { ApiError } from "@/lib/http";
 import { writeAuditLog } from "@/lib/audit";
 import type { Database } from "@/lib/database.types";
@@ -24,7 +29,8 @@ export async function createSubmissionWithJob(
   supabase: SupabaseClient<Database>,
   userId: string,
   input: CreateSubmissionInput,
-): Promise<CreateSubmissionResult> {
+  actor?: { email?: string | null; fullName?: string | null },
+): Promise<CreateSubmissionResult & { subId: string }> {
   const shopeeUrl = (input.shopee_product_url ?? "").trim();
   if (!shopeeUrl) throw new ApiError(400, "Thiếu link sản phẩm Shopee");
 
@@ -58,9 +64,18 @@ export async function createSubmissionWithJob(
     canonicalHash = c.canonicalHash;
   }
 
-  const insertRow: Database["public"]["Tables"]["video_submissions"]["Insert"] =
-    {
+  // Sub ID chính thức cấp ở server (không tin client). Dùng admin client để
+  // đếm chính xác toàn bộ video của user (vượt RLS), tránh lệch số thứ tự.
+  const admin = createSupabaseAdminClient();
+  const account = accountSlug(actor?.email, actor?.fullName);
+  const dateCompact = vnDateCompact();
+
+  function buildInsert(
+    subId: string,
+  ): Database["public"]["Tables"]["video_submissions"]["Insert"] {
+    return {
       created_by: userId,
+      sub_id: subId,
       shopee_product_url: shopeeUrl,
       product_price: price,
       commission_percent: pct,
@@ -78,26 +93,38 @@ export async function createSubmissionWithJob(
       staff_note: (input.staff_note ?? "").trim() || null,
       status: "queued",
     };
+  }
 
-  const { data: sub, error: insErr } = await supabase
-    .from("video_submissions")
-    .insert(insertRow)
-    .select("id")
-    .single();
+  // Insert với retry khi sub_id đụng unique (2 video cùng lúc) — tối đa 5 lần.
+  let sub: { id: string } | null = null;
+  let subId = "";
+  for (let attempt = 0; attempt < 5; attempt++) {
+    subId = await nextSubId(admin, userId, account, dateCompact);
+    const { data, error: insErr } = await supabase
+      .from("video_submissions")
+      .insert(buildInsert(subId))
+      .select("id")
+      .single();
 
-  if (insErr) {
-    if ((insErr as { code?: string }).code === "23505") {
-      throw new ApiError(
-        409,
-        "Video này đã tồn tại trong hệ thống",
-        "DUPLICATE",
-      );
+    if (!insErr) {
+      sub = data;
+      break;
     }
+    const code = (insErr as { code?: string; message?: string }).code;
+    const msg = (insErr as { message?: string }).message ?? "";
+    // trùng canonical video -> báo duplicate ngay (không retry)
+    if (code === "23505" && msg.includes("canonical")) {
+      throw new ApiError(409, "Video này đã tồn tại trong hệ thống", "DUPLICATE");
+    }
+    // trùng sub_id -> retry với số kế tiếp
+    if (code === "23505") continue;
     throw insErr;
+  }
+  if (!sub) {
+    throw new ApiError(409, "Không cấp được Sub ID, vui lòng thử lại", "SUBID_RACE");
   }
 
   // Tạo review job bằng service role (user thường không có quyền INSERT job).
-  const admin = createSupabaseAdminClient();
   const { data: job, error: jobErr } = await admin
     .from("video_review_jobs")
     .insert({
@@ -120,7 +147,7 @@ export async function createSubmissionWithJob(
     action: "submission.create",
     entityType: "video_submission",
     entityId: sub.id,
-    after: { source_type: input.source_type, status: "queued" },
+    after: { sub_id: subId, source_type: input.source_type, status: "queued" },
   });
   await writeAuditLog({
     actorId: userId,
@@ -130,5 +157,5 @@ export async function createSubmissionWithJob(
     after: { video_submission_id: sub.id },
   });
 
-  return { submissionId: sub.id, jobId: job.id };
+  return { submissionId: sub.id, jobId: job.id, subId };
 }

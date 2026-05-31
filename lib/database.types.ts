@@ -704,6 +704,7 @@ export type Database = {
           source_type: Database["public"]["Enums"]["video_source_type"]
           status: Database["public"]["Enums"]["video_submission_status"]
           staff_note: string | null
+          sub_id: string | null
           updated_at: string
         }
         Insert: {
@@ -735,6 +736,7 @@ export type Database = {
           source_type: Database["public"]["Enums"]["video_source_type"]
           status?: Database["public"]["Enums"]["video_submission_status"]
           staff_note?: string | null
+          sub_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -766,6 +768,7 @@ export type Database = {
           source_type?: Database["public"]["Enums"]["video_source_type"]
           status?: Database["public"]["Enums"]["video_submission_status"]
           staff_note?: string | null
+          sub_id?: string | null
           updated_at?: string
         }
         Relationships: [

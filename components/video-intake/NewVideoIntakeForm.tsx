@@ -68,9 +68,24 @@ export function NewVideoIntakeForm({
 
   const [scoring, setScoring] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [subId, setSubId] = useState<string>("");
 
   // Cache file -> đã upload, để chấm thử rồi gửi không upload lại.
   const uploadCache = useRef<Map<File, UploadedFile>>(new Map());
+
+  // Lấy Sub ID dự kiến cho nhân viên hiện tại (ngày + account + STT).
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/video-intake/next-sub-id")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => {
+        if (alive && j?.subId) setSubId(j.subId);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const hasLink = videoUrl.trim().length > 0;
   const hasVideoFile = files.some(isVideoFile);
@@ -128,15 +143,19 @@ export function NewVideoIntakeForm({
     return () => clearTimeout(t);
   }, [videoUrl]);
 
-  /** Upload 1 file lên Supabase Storage qua signed URL. */
-  async function uploadOne(f: File): Promise<UploadedFile> {
+  /** Upload 1 file lên Supabase Storage qua signed URL. Đặt tên theo Sub ID. */
+  async function uploadOne(f: File, index: number): Promise<UploadedFile> {
     const cached = uploadCache.current.get(f);
     if (cached) return cached;
 
     const sessionRes = await fetch("/api/uploads/storage/create-session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ fileName: f.name }),
+      body: JSON.stringify({
+        fileName: f.name,
+        baseName: subId || null,
+        index,
+      }),
     });
     const sessionJson = await sessionRes.json();
     if (!sessionRes.ok) {
@@ -181,7 +200,7 @@ export function NewVideoIntakeForm({
     let done = 0;
     for (const f of files) {
       setUploadInfo(`Đang tải lên ${done + 1}/${files.length}: ${f.name}`);
-      const meta = await uploadOne(f);
+      const meta = await uploadOne(f, done + 1);
       attachments.push({
         drive_file_id: "",
         name: meta.name,
@@ -309,6 +328,18 @@ export function NewVideoIntakeForm({
         <legend className="px-1 text-sm font-semibold text-gray-700">
           Thông tin sản phẩm
         </legend>
+        <Field label="Sub ID (tự tạo)">
+          <input
+            type="text"
+            value={subId || "Đang tạo…"}
+            readOnly
+            className={`${inputClass} bg-gray-50 font-mono text-gray-600`}
+          />
+          <p className="mt-1 text-xs text-gray-400">
+            Mã tự sinh: ngày + tài khoản của bạn + số thứ tự. File tải lên sẽ
+            được đặt tên theo mã này.
+          </p>
+        </Field>
         <Field label="Link sản phẩm Shopee" required>
           <input
             type="url"

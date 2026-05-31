@@ -23,6 +23,8 @@ export type CreateSubmissionInput = {
   product_price: number;
   commission_percent: number;
   category_id?: string | null;
+  /** Sub ID dự kiến từ client (tên file dùng theo). Server vẫn tự cấp chính thức. */
+  sub_id?: string | null;
   source_type: VideoSourceType;
   original_video_url?: string | null;
   staff_note?: string | null;

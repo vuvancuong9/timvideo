@@ -15,13 +15,19 @@ export async function POST(req: NextRequest) {
     if (guard instanceof NextResponse) return guard;
     const session = guard;
 
-    const body = await readJson<{ fileName?: string }>(req);
+    const body = await readJson<{
+      fileName?: string;
+      baseName?: string | null;
+      index?: number;
+    }>(req);
     const fileName = (body.fileName ?? "").trim();
     if (!fileName) throw new ApiError(400, "Thiếu tên file");
 
     const signed = await createSignedVideoUpload({
       userId: session.userId,
       fileName,
+      baseName: body.baseName ?? null,
+      index: body.index,
     });
 
     await writeAuditLog({

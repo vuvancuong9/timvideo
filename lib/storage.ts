@@ -17,6 +17,11 @@ function safeName(name: string): string {
   return cleaned.slice(-120) || "file";
 }
 
+function extOf(name: string): string {
+  const m = name.match(/\.([a-zA-Z0-9]{1,8})$/);
+  return m ? `.${m[1].toLowerCase()}` : "";
+}
+
 export type SignedUpload = {
   bucket: string;
   path: string;
@@ -27,11 +32,23 @@ export type SignedUpload = {
 export async function createSignedVideoUpload(params: {
   userId: string;
   fileName: string;
+  /** Tên cơ sở mong muốn (vd Sub ID). Nếu có, file đặt tên theo nó + đuôi gốc. */
+  baseName?: string | null;
+  /** Số thứ tự khi nhiều file cùng 1 Sub ID (vd 2,3 cho ảnh). */
+  index?: number;
 }): Promise<SignedUpload> {
   const admin = createSupabaseAdminClient();
-  const ts = Date.now();
-  const rand = Math.random().toString(36).slice(2, 8);
-  const path = `${params.userId}/${ts}-${rand}-${safeName(params.fileName)}`;
+  const rand = Math.random().toString(36).slice(2, 6);
+
+  let leaf: string;
+  if (params.baseName) {
+    const base = safeName(params.baseName);
+    const suffix = params.index && params.index > 1 ? `-${params.index}` : "";
+    leaf = `${base}${suffix}-${rand}${extOf(params.fileName)}`;
+  } else {
+    leaf = `${Date.now()}-${rand}-${safeName(params.fileName)}`;
+  }
+  const path = `${params.userId}/${leaf}`;
 
   const { data, error } = await admin.storage
     .from(VIDEO_BUCKET)
