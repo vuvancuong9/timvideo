@@ -6,20 +6,72 @@ const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 const RESUMABLE_ENDPOINT =
   "https://www.googleapis.com/upload/drive/v3/files?uploadType=resumable&supportsAllDrives=true&fields=id,name,webViewLink,parents";
 
+/**
+ * Bóc tách credential Drive một cách "chịu lỗi":
+ * - Chấp nhận dán RIÊNG private key (PEM), HOẶC dán CẢ FILE JSON service account
+ *   vào ô GOOGLE_DRIVE_PRIVATE_KEY (tự lấy private_key + client_email).
+ * - Tự chuẩn hóa \n (literal) thành xuống dòng thật.
+ */
+export function extractDriveCreds(
+  rawKey: string,
+  rawEmail: string | undefined,
+): { email: string; privateKey: string } {
+  let text = (rawKey ?? "").trim();
+  // gỡ 1 lớp nháy kép bao ngoài nếu có
+  if (text.startsWith('"') && text.endsWith('"') && text.length > 1) {
+    text = text.slice(1, -1);
+  }
+  // sửa trường hợp bị nhân đôi nháy ("") khi copy
+  if (text.includes('""')) text = text.replace(/""/g, '"');
+
+  let email = (rawEmail ?? "").trim();
+  let privateKey = text;
+
+  // Nếu là cả JSON service account -> lấy client_email từ đó (nếu ô email trống).
+  if (text.includes('"client_email"') && !email) {
+    const m = text.match(/"client_email"\s*:\s*"([^"]+)"/);
+    if (m) email = m[1];
+  }
+
+  // Lấy thẳng khối PEM (chắc chắn nhất), dù nằm trong JSON hay không.
+  const pem = text.match(
+    /-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/,
+  );
+  if (pem) privateKey = pem[0];
+
+  privateKey = privateKey.replace(/\\n/g, "\n").trim();
+  return { email, privateKey };
+}
+
 /** JWT auth Drive — đọc credential từ app_settings (DB) hoặc env. */
 export async function getDriveJwtAuth() {
-  const clientEmail = await getSetting("GOOGLE_DRIVE_CLIENT_EMAIL");
-  const privateKey = await getSetting("GOOGLE_DRIVE_PRIVATE_KEY");
-  if (!clientEmail || !privateKey) {
+  const rawEmail = await getSetting("GOOGLE_DRIVE_CLIENT_EMAIL");
+  const rawKey = await getSetting("GOOGLE_DRIVE_PRIVATE_KEY");
+  if (!rawKey) {
     throw new ApiError(
       500,
-      "Chưa cấu hình Google Drive (GOOGLE_DRIVE_CLIENT_EMAIL / GOOGLE_DRIVE_PRIVATE_KEY).",
+      "Chưa cấu hình Google Drive (GOOGLE_DRIVE_PRIVATE_KEY).",
       "DRIVE_NOT_CONFIGURED",
     );
   }
+  const { email, privateKey } = extractDriveCreds(rawKey, rawEmail);
+  if (!email) {
+    throw new ApiError(
+      500,
+      "Thiếu GOOGLE_DRIVE_CLIENT_EMAIL (hoặc client_email trong JSON).",
+      "DRIVE_NOT_CONFIGURED",
+    );
+  }
+  if (!privateKey.includes("PRIVATE KEY")) {
+    throw new ApiError(
+      500,
+      "GOOGLE_DRIVE_PRIVATE_KEY không hợp lệ — cần là private key (PEM) hoặc cả file JSON service account.",
+      "DRIVE_KEY_INVALID",
+    );
+  }
   return new google.auth.JWT({
-    email: clientEmail,
-    key: privateKey.replace(/\\n/g, "\n"),
+    email,
+    key: privateKey,
     scopes: [DRIVE_SCOPE],
   });
 }
