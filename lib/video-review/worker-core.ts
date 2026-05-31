@@ -26,6 +26,11 @@ import {
   loadImagePartsFromAttachments,
   parseAttachments,
 } from "@/lib/video-review/images";
+import { updateSubmissionScores } from "@/lib/sheets";
+import {
+  FINAL_ACTION_LABELS,
+  FINAL_ACTION_VERDICT,
+} from "@/lib/video-intake/labels";
 import type { Database } from "@/lib/database.types";
 import type { VideoReviewStage } from "@/types/videoReview";
 
@@ -293,6 +298,22 @@ async function processClaimedJob(
     .from("video_submissions")
     .update({ status: statusMap[decision.final_action] ?? "reviewed" })
     .eq("id", submission.id);
+
+  // Cập nhật điểm + kết luận vào Google Sheet (best-effort theo Sub ID).
+  if (submission.sub_id) {
+    try {
+      await updateSubmissionScores(submission.sub_id, {
+        status: FINAL_ACTION_LABELS[decision.final_action],
+        creative: decision.creative_score,
+        policy: decision.policy_safety_score,
+        copyright: decision.copyright_safety_score,
+        finalScore: decision.final_score,
+        verdict: FINAL_ACTION_VERDICT[decision.final_action].headline,
+      });
+    } catch {
+      // không làm fail job vì lỗi Sheet
+    }
+  }
 
   await writeAuditLog({
     actorId: null,

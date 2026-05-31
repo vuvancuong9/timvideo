@@ -13,6 +13,8 @@ import {
 } from "@/lib/video-intake/sub-id";
 import { ApiError } from "@/lib/http";
 import { writeAuditLog } from "@/lib/audit";
+import { appendSubmissionRow } from "@/lib/sheets";
+import { SOURCE_TYPE_LABELS } from "@/lib/video-intake/labels";
 import type { Database } from "@/lib/database.types";
 import type { CreateSubmissionInput } from "@/types/videoIntake";
 
@@ -157,5 +159,55 @@ export async function createSubmissionWithJob(
     after: { video_submission_id: sub.id },
   });
 
+  // Ghi 1 dòng vào Google Sheet (best-effort: lỗi không làm fail submit).
+  try {
+    let categoryName = "";
+    if (input.category_id) {
+      const { data: cat } = await admin
+        .from("product_categories")
+        .select("name")
+        .eq("id", input.category_id)
+        .maybeSingle();
+      categoryName = cat?.name ?? "";
+    }
+    const fileUrl =
+      input.drive?.driveWebUrl ??
+      (input.attachments ?? []).find((a) => a?.kind === "video")?.web_url ??
+      "";
+    const r = await appendSubmissionRow({
+      subId,
+      date: sheetDate(),
+      employee: actor?.fullName || actor?.email || account,
+      shopeeUrl,
+      price,
+      commissionPercent: pct,
+      estimatedCommission: Math.round((price * pct) / 100) / 1, // = price*pct/100
+      category: categoryName,
+      source: SOURCE_TYPE_LABELS[input.source_type] ?? input.source_type,
+      videoUrl: rawVideoUrl,
+      fileUrl,
+      status: "Chờ chấm",
+    });
+    await writeAuditLog({
+      actorId: userId,
+      action: r.ok ? "sheet.append_ok" : "sheet.append_failed",
+      entityType: "video_submission",
+      entityId: sub.id,
+      after: { sub_id: subId, error: r.error ?? null },
+    });
+  } catch {
+    // tuyệt đối không làm fail submit vì lỗi Sheet
+  }
+
   return { submissionId: sub.id, jobId: job.id, subId };
+}
+
+/** Ngày dd/MM/yyyy theo giờ VN cho cột Sheet. */
+function sheetDate(): string {
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(new Date());
 }
