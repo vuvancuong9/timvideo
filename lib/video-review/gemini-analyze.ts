@@ -23,8 +23,13 @@ export type GeminiAnalyzeOutput = {
   raw: unknown;
 };
 
+type GeminiPart =
+  | { text: string }
+  | { inline_data: { mime_type: string; data: string } };
+
 export async function analyzeContentWithGemini(
   input: ContentAnalysisPromptInput,
+  images?: { data: string; mimeType: string }[],
 ): Promise<GeminiAnalyzeOutput> {
   const { apiKey, model } = await getGeminiConfig();
   if (!apiKey) {
@@ -36,12 +41,18 @@ export async function analyzeContentWithGemini(
     model,
   )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
+  // text + (ảnh inline để Gemini đọc số liệu tương tác)
+  const parts: GeminiPart[] = [{ text: userPrompt }];
+  for (const img of images ?? []) {
+    parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
+  }
+
   const body = {
     systemInstruction: {
       role: "system",
       parts: [{ text: CONTENT_ANALYSIS_SYSTEM_PROMPT }],
     },
-    contents: [{ role: "user", parts: [{ text: userPrompt }] }],
+    contents: [{ role: "user", parts }],
     generationConfig: {
       temperature: 0.4,
       responseMimeType: "application/json",

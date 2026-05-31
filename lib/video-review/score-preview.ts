@@ -13,12 +13,14 @@ import {
   computeCreativeScore,
   decideFinalAction,
 } from "@/lib/video-review/final-decision";
+import { loadImagePartsFromAttachments } from "@/lib/video-review/images";
 import type {
   ContentAnalysisResult,
   PolicyCheckResult,
   CreativeScoreModelResult,
   FinalDecisionResult,
 } from "@/types/videoReview";
+import type { SubmissionAttachment } from "@/types/videoIntake";
 
 export type PreviewInput = {
   shopeeProductUrl: string;
@@ -29,6 +31,7 @@ export type PreviewInput = {
   videoUrl: string | null;
   driveWebUrl: string | null;
   hasVideoFile: boolean;
+  attachments?: SubmissionAttachment[] | null;
 };
 
 export type PreviewResult = {
@@ -41,20 +44,27 @@ export type PreviewResult = {
 export async function scoreVideoPreview(
   input: PreviewInput,
 ): Promise<PreviewResult> {
+  // Nạp ảnh đính kèm (vd ảnh chụp like/view/comment) để Gemini đọc số liệu.
+  const imageParts = await loadImagePartsFromAttachments(input.attachments);
+
   // STAGE: ANALYZE (Gemini) — KHÔNG bịa transcript/OCR (preview chưa extract).
-  const analysis = await analyzeContentWithGemini({
-    productCategory: input.categoryName,
-    shopeeProductUrl: input.shopeeProductUrl,
-    productPrice: input.productPrice,
-    commissionPercent: input.commissionPercent,
-    sourceType: input.sourceType,
-    videoUrl: input.videoUrl,
-    driveWebUrl: input.driveWebUrl,
-    transcript: null,
-    ocrText: null,
-    frameCount: 0,
-    hasVideoFile: input.hasVideoFile,
-  });
+  const analysis = await analyzeContentWithGemini(
+    {
+      productCategory: input.categoryName,
+      shopeeProductUrl: input.shopeeProductUrl,
+      productPrice: input.productPrice,
+      commissionPercent: input.commissionPercent,
+      sourceType: input.sourceType,
+      videoUrl: input.videoUrl,
+      driveWebUrl: input.driveWebUrl,
+      transcript: null,
+      ocrText: null,
+      frameCount: 0,
+      imageCount: imageParts.length,
+      hasVideoFile: input.hasVideoFile,
+    },
+    imageParts,
+  );
 
   // STAGE: POLICY (OpenAI)
   const policy = await checkPolicyWithOpenAI({

@@ -9,7 +9,10 @@ import {
   PreviewResultPanel,
   type PreviewData,
 } from "@/components/video-review/PreviewResultPanel";
-import type { VideoSourceType } from "@/types/videoIntake";
+import type {
+  VideoSourceType,
+  SubmissionAttachment,
+} from "@/types/videoIntake";
 
 type Category = { id: string; name: string };
 
@@ -28,6 +31,13 @@ const SOURCE_OPTIONS: VideoSourceType[] = [
   "other_url",
 ];
 
+function isImageFile(f: File): boolean {
+  return f.type.startsWith("image/");
+}
+function isVideoFile(f: File): boolean {
+  return f.type.startsWith("video/");
+}
+
 function putFileWithProgress(
   url: string,
   file: File,
@@ -36,10 +46,7 @@ function putFileWithProgress(
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("PUT", url, true);
-    xhr.setRequestHeader(
-      "Content-Type",
-      file.type || "application/octet-stream",
-    );
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
     };
@@ -64,7 +71,6 @@ export function NewVideoIntakeForm({
   redirectTo = "/staff/my-videos",
 }: {
   categories: Category[];
-  /** Trang chuyển tới sau khi submit thành công. */
   redirectTo?: string;
 }) {
   const router = useRouter();
@@ -77,28 +83,37 @@ export function NewVideoIntakeForm({
   const [sourceType, setSourceType] = useState<VideoSourceType>("tiktok_url");
   const [sourceTouched, setSourceTouched] = useState(false);
   const [note, setNote] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
 
   const [checking, setChecking] = useState(false);
   const [duplicate, setDuplicate] = useState(false);
   const [dupMsg, setDupMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadInfo, setUploadInfo] = useState<string | null>(null);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Chấm điểm thử
   const [scoring, setScoring] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
-  // Cache kết quả upload Drive để không upload 2 lần (preview + submit).
-  const driveCache = useRef<{ file: File; meta: DriveMeta } | null>(null);
 
-  const isDrive = sourceType === "drive_upload";
+  // Cache file -> meta để không upload 2 lần (chấm thử rồi gửi).
+  const driveCache = useRef<Map<File, DriveMeta>>(new Map());
 
-  // auto-detect nguồn từ URL nếu user chưa chỉnh tay
+  const hasLink = videoUrl.trim().length > 0;
+  const hasVideoFile = files.some(isVideoFile);
+  const imageCount = files.filter(isImageFile).length;
+
+  // auto-detect nguồn từ link nếu user chưa chỉnh tay
   useEffect(() => {
-    if (sourceTouched || isDrive) return;
+    if (sourceTouched) return;
     if (videoUrl.trim()) setSourceType(detectVideoSource(videoUrl));
-  }, [videoUrl, sourceTouched, isDrive]);
+  }, [videoUrl, sourceTouched]);
+
+  const effectiveSource: VideoSourceType = hasLink
+    ? sourceType
+    : hasVideoFile
+      ? "drive_upload"
+      : sourceType;
 
   const estimated = useMemo(() => {
     const p = Number(price);
@@ -109,12 +124,12 @@ export function NewVideoIntakeForm({
 
   const lastChecked = useRef("");
 
-  // debounce 500ms check duplicate
+  // debounce 500ms check trùng (chỉ khi có link)
   useEffect(() => {
     const url = videoUrl.trim();
     setDuplicate(false);
     setDupMsg(null);
-    if (!url || isDrive) {
+    if (!url) {
       setChecking(false);
       return;
     }
@@ -140,13 +155,11 @@ export function NewVideoIntakeForm({
       }
     }, 500);
     return () => clearTimeout(t);
-  }, [videoUrl, isDrive]);
+  }, [videoUrl]);
 
-  async function uploadToDrive(f: File): Promise<DriveMeta> {
-    // dùng lại nếu đã upload chính file này (vd vừa chấm thử xong rồi submit)
-    if (driveCache.current && driveCache.current.file === f) {
-      return driveCache.current.meta;
-    }
+  async function uploadOne(f: File): Promise<DriveMeta> {
+    const cached = driveCache.current.get(f);
+    if (cached) return cached;
     setProgress(0);
     const sessionRes = await fetch("/api/uploads/drive/create-session", {
       method: "POST",
@@ -178,26 +191,57 @@ export function NewVideoIntakeForm({
       throw new Error(completeJson.error || "Không hoàn tất upload Drive");
     }
     const meta = completeJson.drive as DriveMeta;
-    driveCache.current = { file: f, meta };
+    driveCache.current.set(f, meta);
     return meta;
+  }
+
+  /** Upload tất cả file → {primary video, danh sách attachments}. */
+  async function uploadAll(): Promise<{
+    primary: DriveMeta | null;
+    attachments: SubmissionAttachment[];
+  }> {
+    const attachments: SubmissionAttachment[] = [];
+    let primary: DriveMeta | null = null;
+    let done = 0;
+    for (const f of files) {
+      setUploadInfo(`Đang tải lên ${done + 1}/${files.length}: ${f.name}`);
+      const meta = await uploadOne(f);
+      const kind: "video" | "image" = isImageFile(f) ? "image" : "video";
+      attachments.push({
+        drive_file_id: meta.driveFileId,
+        name: meta.driveFileName,
+        web_url: meta.driveWebUrl,
+        mime_type: f.type || null,
+        kind,
+      });
+      if (kind === "video" && !primary) primary = meta;
+      done += 1;
+    }
+    setUploadInfo(null);
+    return { primary, attachments };
+  }
+
+  function validateInputs(): string | null {
+    if (!hasLink && !hasVideoFile) {
+      return "Cần dán link video HOẶC tải lên file video để chấm/gửi. (Ảnh chỉ là dữ liệu bổ sung.)";
+    }
+    return null;
   }
 
   // Chấm điểm thử NGAY (Gemini + ChatGPT), không lưu DB.
   async function onScore() {
     setError(null);
     setPreview(null);
-    if (!isDrive && !videoUrl.trim()) {
-      setError("Dán link video hoặc chọn nguồn Drive + upload file để chấm thử.");
-      return;
-    }
-    if (isDrive && !file) {
-      setError("Vui lòng chọn file video để chấm thử.");
+    const v = validateInputs();
+    if (v) {
+      setError(v);
       return;
     }
     setScoring(true);
     try {
-      let drive: DriveMeta | null = null;
-      if (file) drive = await uploadToDrive(file);
+      let primary: DriveMeta | null = null;
+      let attachments: SubmissionAttachment[] = [];
+      if (files.length) ({ primary, attachments } = await uploadAll());
       const res = await fetch("/api/video-review/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -206,9 +250,10 @@ export function NewVideoIntakeForm({
           product_price: price,
           commission_percent: percent,
           category_id: categoryId || null,
-          source_type: sourceType,
-          original_video_url: isDrive ? null : videoUrl,
-          drive,
+          source_type: effectiveSource,
+          original_video_url: hasLink ? videoUrl : null,
+          drive: primary,
+          attachments,
         }),
       });
       const json = await res.json();
@@ -234,18 +279,16 @@ export function NewVideoIntakeForm({
       setError("Video này đã tồn tại trong hệ thống.");
       return;
     }
-    if (!isDrive && !videoUrl.trim()) {
-      setError("Vui lòng nhập link video gốc.");
-      return;
-    }
-    if (isDrive && !file) {
-      setError("Vui lòng chọn file video để upload.");
+    const v = validateInputs();
+    if (v) {
+      setError(v);
       return;
     }
     setSubmitting(true);
     try {
-      let drive: DriveMeta | null = null;
-      if (file) drive = await uploadToDrive(file);
+      let primary: DriveMeta | null = null;
+      let attachments: SubmissionAttachment[] = [];
+      if (files.length) ({ primary, attachments } = await uploadAll());
 
       const res = await fetch("/api/video-intake/submissions", {
         method: "POST",
@@ -255,10 +298,11 @@ export function NewVideoIntakeForm({
           product_price: price,
           commission_percent: percent,
           category_id: categoryId || null,
-          source_type: sourceType,
-          original_video_url: isDrive ? null : videoUrl,
+          source_type: effectiveSource,
+          original_video_url: hasLink ? videoUrl : null,
           staff_note: note || null,
-          drive,
+          drive: primary,
+          attachments,
         }),
       });
       const json = await res.json();
@@ -271,10 +315,12 @@ export function NewVideoIntakeForm({
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
       setSubmitting(false);
       setProgress(null);
+      setUploadInfo(null);
     }
   }
 
-  const disabled = submitting || duplicate || checking;
+  const busy = submitting || scoring;
+  const submitDisabled = busy || duplicate || checking;
 
   return (
     <form onSubmit={onSubmit} className="max-w-2xl space-y-5">
@@ -340,7 +386,14 @@ export function NewVideoIntakeForm({
         <legend className="px-1 text-sm font-semibold text-gray-700">
           Thông tin video
         </legend>
-        <Field label="Nguồn video" required>
+
+        <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+          Bạn có thể <b>dán link video</b> hoặc <b>tải file lên</b> — chỉ cần 1
+          trong 2. Có thể chọn <b>nhiều file</b> cùng lúc, gồm cả <b>ảnh chụp lượt
+          like / view / comment</b> để AI đọc số liệu chấm chính xác hơn.
+        </p>
+
+        <Field label="Nguồn video">
           <select
             value={sourceType}
             onChange={(e) => {
@@ -357,52 +410,68 @@ export function NewVideoIntakeForm({
           </select>
         </Field>
 
-        {!isDrive && (
-          <Field label="Link video gốc" required>
-            <input
-              type="url"
-              required={!isDrive}
-              value={videoUrl}
-              onChange={(e) => setVideoUrl(e.target.value)}
-              placeholder="Link TikTok / Facebook / YouTube / khác"
-              className={inputClass}
-            />
-            <div className="mt-1 flex items-center gap-2 text-xs">
-              {videoUrl.trim() && (
-                <span className="text-gray-500">
-                  Nguồn nhận diện:{" "}
-                  <span className="font-medium text-gray-700">
-                    {SOURCE_TYPE_LABELS[detectVideoSource(videoUrl)]}
-                  </span>
+        <Field label="Link video gốc (nếu có)">
+          <input
+            type="url"
+            value={videoUrl}
+            onChange={(e) => setVideoUrl(e.target.value)}
+            placeholder="Link TikTok / Facebook / YouTube / khác"
+            className={inputClass}
+          />
+          <div className="mt-1 flex items-center gap-2 text-xs">
+            {videoUrl.trim() && (
+              <span className="text-gray-500">
+                Nguồn nhận diện:{" "}
+                <span className="font-medium text-gray-700">
+                  {SOURCE_TYPE_LABELS[detectVideoSource(videoUrl)]}
                 </span>
-              )}
-              {checking && <span className="text-gray-400">Đang kiểm tra…</span>}
-            </div>
-            {duplicate && dupMsg && (
-              <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
-                ⚠️ {dupMsg}
-              </p>
+              </span>
             )}
-          </Field>
-        )}
+            {checking && <span className="text-gray-400">Đang kiểm tra…</span>}
+          </div>
+          {duplicate && dupMsg && (
+            <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+              ⚠️ {dupMsg}
+            </p>
+          )}
+        </Field>
 
-        <Field
-          label={
-            isDrive
-              ? "Upload file video lên Google Drive (bắt buộc)"
-              : "Upload file video lên Google Drive (tuỳ chọn — giúp chấm chính xác hơn)"
-          }
-        >
+        <Field label="Tải lên video và/hoặc ảnh (chọn nhiều file được)">
           <input
             type="file"
-            accept="video/*"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            accept="video/*,image/*"
+            multiple
+            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
             className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-brand-dark"
           />
-          {file && (
-            <p className="mt-1 text-xs text-gray-500">
-              {file.name} ({(file.size / 1024 / 1024).toFixed(1)} MB)
+          {files.length > 0 && (
+            <ul className="mt-2 space-y-1 text-xs text-gray-600">
+              {files.map((f, i) => (
+                <li key={i} className="flex items-center gap-2">
+                  <span
+                    className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                      isImageFile(f)
+                        ? "bg-purple-100 text-purple-700"
+                        : "bg-blue-100 text-blue-700"
+                    }`}
+                  >
+                    {isImageFile(f) ? "ẢNH" : "VIDEO"}
+                  </span>
+                  <span className="truncate">{f.name}</span>
+                  <span className="text-gray-400">
+                    ({(f.size / 1024 / 1024).toFixed(1)} MB)
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          {imageCount > 0 && (
+            <p className="mt-1 text-xs text-purple-600">
+              {imageCount} ảnh sẽ được AI đọc (vd số liệu like/view/comment).
             </p>
+          )}
+          {uploadInfo && (
+            <p className="mt-1 text-xs text-gray-500">{uploadInfo}</p>
           )}
           {progress !== null && (
             <div className="mt-2">
@@ -412,9 +481,7 @@ export function NewVideoIntakeForm({
                   style={{ width: `${progress}%` }}
                 />
               </div>
-              <p className="mt-1 text-xs text-gray-500">
-                Đang upload {progress}%
-              </p>
+              <p className="mt-1 text-xs text-gray-500">Đang tải {progress}%</p>
             </div>
           )}
         </Field>
@@ -438,7 +505,7 @@ export function NewVideoIntakeForm({
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="submit"
-          disabled={disabled || scoring}
+          disabled={submitDisabled}
           className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting ? "Đang lưu…" : "Gửi video"}
@@ -446,7 +513,7 @@ export function NewVideoIntakeForm({
         <button
           type="button"
           onClick={onScore}
-          disabled={scoring || submitting || duplicate}
+          disabled={busy || duplicate}
           className="rounded-lg border border-brand px-5 py-2.5 text-sm font-semibold text-brand transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {scoring ? "Đang chấm điểm…" : "🎯 Chấm điểm thử ngay"}

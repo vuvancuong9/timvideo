@@ -44,6 +44,21 @@ export async function getDriveFileInfo(fileId: string): Promise<DriveFileInfo> {
 }
 
 /**
+ * Lấy nội dung ảnh Drive dưới dạng base64 để gửi cho Gemini (đọc ảnh số liệu
+ * tương tác like/view/comment). Chỉ nhận file ảnh, cap 15MB. Trả null nếu không hợp lệ.
+ */
+export async function fetchDriveImageBase64(
+  fileId: string,
+): Promise<{ data: string; mimeType: string } | null> {
+  const info = await getDriveFileInfo(fileId);
+  const mime = info.mimeType ?? "";
+  if (!mime.startsWith("image/")) return null;
+  const buf = await downloadDriveFileBuffer(fileId, 15 * 1024 * 1024);
+  if (!buf) return null;
+  return { data: buf.toString("base64"), mimeType: mime };
+}
+
+/**
  * Tải file Drive về Buffer (chỉ khi <= MAX_DOWNLOAD_BYTES). Trả null nếu quá lớn.
  * TODO: với file lớn nên stream ra storage tạm thay vì giữ trong memory.
  */

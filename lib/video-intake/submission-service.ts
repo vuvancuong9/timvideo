@@ -37,14 +37,12 @@ export async function createSubmissionWithJob(
     throw new ApiError(400, "% hoa hồng không hợp lệ");
   }
 
-  const isDrive = input.source_type === "drive_upload";
   const rawVideoUrl = (input.original_video_url ?? "").trim();
+  const hasDriveVideo = Boolean(input.drive?.driveFileId);
 
-  if (!isDrive && !rawVideoUrl) {
-    throw new ApiError(400, "Thiếu link video gốc");
-  }
-  if (isDrive && !input.drive?.driveFileId) {
-    throw new ApiError(400, "Thiếu file Drive đã upload");
+  // Cần ÍT NHẤT link video gốc HOẶC một file video đã upload.
+  if (!rawVideoUrl && !hasDriveVideo) {
+    throw new ApiError(400, "Cần link video gốc hoặc file video đã tải lên");
   }
 
   // Canonicalize ở server (lớp chống trùng quyết định nằm ở DB unique index).
@@ -71,6 +69,8 @@ export async function createSubmissionWithJob(
       drive_file_name: input.drive?.driveFileName ?? null,
       drive_web_url: input.drive?.driveWebUrl ?? null,
       drive_folder_id: input.drive?.driveFolderId ?? null,
+      attachments: (input.attachments ??
+        []) as Database["public"]["Tables"]["video_submissions"]["Insert"]["attachments"],
       staff_note: (input.staff_note ?? "").trim() || null,
       status: "queued",
     };

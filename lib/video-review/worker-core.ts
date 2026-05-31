@@ -22,6 +22,10 @@ import {
   decideFinalAction,
 } from "@/lib/video-review/final-decision";
 import { getDriveFileInfo } from "@/lib/video-intake/drive";
+import {
+  loadImagePartsFromAttachments,
+  parseAttachments,
+} from "@/lib/video-review/images";
 import type { Database } from "@/lib/database.types";
 import type { VideoReviewStage } from "@/types/videoReview";
 
@@ -117,21 +121,29 @@ async function processClaimedJob(
   const transcript: string | null = null;
   const ocrText: string | null = null;
 
+  // Ảnh đính kèm (vd ảnh chụp like/view/comment) -> đưa vào Gemini.
+  const attachments = parseAttachments(submission.attachments);
+  const imageParts = await loadImagePartsFromAttachments(attachments);
+
   // STAGE 3: ANALYZE (Gemini)
   await setStage(db, job.id, "analyze");
-  const analysis = await analyzeContentWithGemini({
-    productCategory: categoryName,
-    shopeeProductUrl: submission.shopee_product_url,
-    productPrice: Number(submission.product_price),
-    commissionPercent: Number(submission.commission_percent),
-    sourceType: submission.source_type,
-    videoUrl: submission.original_video_url,
-    driveWebUrl: submission.drive_web_url,
-    transcript,
-    ocrText,
-    frameCount: 0,
-    hasVideoFile,
-  });
+  const analysis = await analyzeContentWithGemini(
+    {
+      productCategory: categoryName,
+      shopeeProductUrl: submission.shopee_product_url,
+      productPrice: Number(submission.product_price),
+      commissionPercent: Number(submission.commission_percent),
+      sourceType: submission.source_type,
+      videoUrl: submission.original_video_url,
+      driveWebUrl: submission.drive_web_url,
+      transcript,
+      ocrText,
+      frameCount: 0,
+      imageCount: imageParts.length,
+      hasVideoFile,
+    },
+    imageParts,
+  );
   await db.from("video_content_analysis").insert({
     video_submission_id: submission.id,
     provider: "gemini",

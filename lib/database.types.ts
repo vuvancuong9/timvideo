@@ -680,6 +680,7 @@ export type Database = {
           assigned_affiliate_account_id: string | null
           assigned_at: string | null
           assigned_by: string | null
+          attachments: Json
           canonical_video_hash: string | null
           canonical_video_url: string | null
           category_id: string | null
@@ -711,6 +712,7 @@ export type Database = {
           assigned_affiliate_account_id?: string | null
           assigned_at?: string | null
           assigned_by?: string | null
+          attachments?: Json
           canonical_video_hash?: string | null
           canonical_video_url?: string | null
           category_id?: string | null
@@ -741,6 +743,7 @@ export type Database = {
           assigned_affiliate_account_id?: string | null
           assigned_at?: string | null
           assigned_by?: string | null
+          attachments?: Json
           canonical_video_hash?: string | null
           canonical_video_url?: string | null
           category_id?: string | null

@@ -11,13 +11,15 @@ export type ContentAnalysisPromptInput = {
   transcript: string | null;
   ocrText: string | null;
   frameCount: number;
+  imageCount: number;
   hasVideoFile: boolean;
 };
 
 export const CONTENT_ANALYSIS_SYSTEM_PROMPT = `Bạn là chuyên gia phân tích video sản phẩm để bán affiliate.
-Phân tích video dựa trên dữ liệu được cung cấp (thông tin sản phẩm, frames nếu có, transcript nếu có, OCR nếu có).
+Phân tích video dựa trên dữ liệu được cung cấp (thông tin sản phẩm, frames nếu có, transcript nếu có, OCR nếu có, ẢNH đính kèm nếu có).
+Một số ảnh đính kèm là ẢNH CHỤP SỐ LIỆU TƯƠNG TÁC (lượt like / view / comment / share). Hãy ĐỌC các con số trong ảnh, đánh giá độ hấp dẫn & "social proof" (video càng nhiều tương tác càng tiềm năng), và phản ánh vào nhận xét + điểm hook/độ tin cậy. Nếu thấy số liệu tương tác, ghi rõ vào "summary" (vd: "video gốc đạt ~120k view, 3k like").
 KHÔNG bịa transcript/OCR nếu không được cung cấp.
-Nếu dữ liệu ít (chỉ link ngoài, không có frame/transcript) thì đặt "confidence" = "low" hoặc "medium".
+Nếu dữ liệu ít (chỉ link ngoài, không có frame/transcript/ảnh) thì đặt "confidence" = "low" hoặc "medium".
 CHỈ trả về JSON đúng schema, không thêm chữ nào ngoài JSON.`;
 
 export function buildContentAnalysisUserPrompt(
@@ -31,6 +33,7 @@ export function buildContentAnalysisUserPrompt(
     `Link video: ${input.videoUrl ?? "(không có)"}`,
     `Drive: ${input.driveWebUrl ?? "(không có)"}`,
     `Số frame trích xuất được: ${input.frameCount}`,
+    `Số ảnh đính kèm (ảnh số liệu tương tác / ảnh sản phẩm) — xem trong phần ảnh kèm theo: ${input.imageCount}`,
     `Có file video: ${input.hasVideoFile ? "CÓ" : "KHÔNG (confidence thấp hơn)"}`,
     "",
     `Transcript: ${input.transcript ?? "(không có)"}`,

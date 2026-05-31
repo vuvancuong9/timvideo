@@ -10,6 +10,8 @@ export const runtime = "nodejs";
 // Chấm điểm đồng bộ gọi 3 lần AI -> cần thời gian. Soft cap 60s (như cron).
 export const maxDuration = 60;
 
+import type { SubmissionAttachment } from "@/types/videoIntake";
+
 type PreviewBody = {
   shopee_product_url?: string;
   product_price?: number | string;
@@ -18,6 +20,7 @@ type PreviewBody = {
   source_type?: string;
   original_video_url?: string | null;
   drive?: { driveWebUrl?: string | null; driveFileId?: string | null } | null;
+  attachments?: SubmissionAttachment[] | null;
 };
 
 // POST /api/video-review/preview — chấm điểm thử NGAY (không lưu DB).
@@ -58,6 +61,7 @@ export async function POST(req: NextRequest) {
       videoUrl,
       driveWebUrl: body.drive?.driveWebUrl ?? null,
       hasVideoFile,
+      attachments: body.attachments ?? null,
     });
 
     await writeAuditLog({

@@ -8,6 +8,15 @@ export type VideoSubmissionRow = Tables<"video_submissions">;
 export type ProductCategoryRow = Tables<"product_categories">;
 export type AffiliateAccountRow = Tables<"affiliate_accounts">;
 
+/** File đính kèm: video phụ hoặc ảnh (vd ảnh chụp lượt like/view/comment). */
+export type SubmissionAttachment = {
+  drive_file_id: string;
+  name: string | null;
+  web_url: string | null;
+  mime_type: string | null;
+  kind: "video" | "image";
+};
+
 /** Input nhân viên gửi lên khi tạo submission. */
 export type CreateSubmissionInput = {
   shopee_product_url: string;
@@ -23,6 +32,8 @@ export type CreateSubmissionInput = {
     driveWebUrl?: string | null;
     driveFolderId?: string | null;
   } | null;
+  /** Nhiều file đính kèm (video phụ + ảnh số liệu tương tác). */
+  attachments?: SubmissionAttachment[] | null;
 };
 
 export type DuplicateExisting = {
