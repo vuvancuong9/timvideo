@@ -75,33 +75,37 @@ export function classifyVideoSource(args: {
 }): VideoSourceClass {
   const { sourceType, originalVideoUrl, driveWebUrl, attachments } = args;
 
-  // 1) YouTube public → Gemini đọc trực tiếp.
+  // Người dùng tích chọn nguồn chấm: source_type="drive_upload" => chấm theo
+  // FILE đã tải lên (bỏ qua link); ngược lại => chấm theo LINK (bỏ qua file).
+  // Nhờ vậy có thể điền CẢ link lẫn file, chỉ nguồn được chọn mới đem đi chấm.
+  if (sourceType === "drive_upload") {
+    if (driveWebUrl) {
+      return { kind: "fetch", url: driveWebUrl, mimeHint: null };
+    }
+    const vid = (attachments ?? []).find(
+      (a) => a && a.kind === "video" && a.web_url,
+    );
+    if (vid && vid.web_url) {
+      return { kind: "fetch", url: vid.web_url, mimeHint: vid.mime_type ?? null };
+    }
+    return {
+      kind: "none",
+      warning: "Chọn chấm theo file nhưng chưa có file video tải lên.",
+    };
+  }
+
+  // Chấm theo LINK.
   const isYouTube =
     sourceType === "youtube_url" ||
     (!!originalVideoUrl && detectVideoSource(originalVideoUrl) === "youtube_url");
   if (isYouTube && originalVideoUrl) {
     return { kind: "youtube", url: canonicalizeVideoUrl(originalVideoUrl) };
   }
-
-  // 2) Video chính đã upload Storage.
-  if (driveWebUrl) {
-    return { kind: "fetch", url: driveWebUrl, mimeHint: null };
-  }
-
-  // 3) Attachment kind=video đầu tiên.
-  const vid = (attachments ?? []).find(
-    (a) => a && a.kind === "video" && a.web_url,
-  );
-  if (vid && vid.web_url) {
-    return { kind: "fetch", url: vid.web_url, mimeHint: vid.mime_type ?? null };
-  }
-
-  // 4) Link ngoài không tải được.
   if (sourceType === "tiktok_url" || sourceType === "facebook_url") {
     return {
       kind: "none",
       warning:
-        "Link TikTok/Facebook không tải trực tiếp được vào Gemini — cần upload file video để chấm chính xác.",
+        "Link TikTok/Facebook không tải trực tiếp được vào Gemini — chọn 'File video tải lên' để chấm chính xác.",
     };
   }
   return { kind: "none", warning: "Không có nguồn video đọc được để gửi Gemini." };

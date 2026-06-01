@@ -100,20 +100,11 @@ export function NewVideoIntakeForm({
     });
   }
 
-  /** Đổi nguồn chấm điểm (file/link). Xóa dữ liệu nguồn kia + buộc chấm lại. */
+  /** Đổi nguồn chấm điểm (file/link). Cả 2 ô vẫn điền được; chỉ buộc chấm lại. */
   function chooseMode(m: "file" | "link") {
     if (m === inputMode) return;
     setInputMode(m);
     invalidatePreview();
-    if (m === "link") {
-      for (const f of files) uploadCache.current.delete(f);
-      setFiles([]);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    } else {
-      setVideoUrl("");
-      setDuplicate(false);
-      setDupMsg(null);
-    }
   }
 
   // Lấy Sub ID dự kiến cho nhân viên hiện tại (ngày + account + STT).
@@ -547,15 +538,14 @@ export function NewVideoIntakeForm({
             </button>
           </div>
           <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+            Điền link và/hoặc tải file đều được — nút trên chọn nguồn để AI chấm.{" "}
             {inputMode === "file"
-              ? "Tải file video lên để AI XEM video thật và chấm chính xác nhất (có thể kèm ảnh số liệu like/view/comment)."
-              : "Dán link video. YouTube: AI xem được trực tiếp. TikTok/Facebook: chỉ chấm SƠ BỘ (AI không tải được video) — muốn chính xác hãy chuyển sang “File video”."}
+              ? "Đang chấm theo FILE video tải lên (AI xem video thật, chính xác nhất)."
+              : "Đang chấm theo LINK. YouTube: AI xem trực tiếp; TikTok/Facebook chỉ SƠ BỘ — muốn chính xác hãy chọn “File video tải lên”."}
           </p>
         </div>
 
-        {inputMode === "link" && (
-          <>
-            <Field label="Nguồn video">
+        <Field label="Nguồn video">
           <select
             value={sourceType}
             onChange={(e) => {
@@ -600,10 +590,7 @@ export function NewVideoIntakeForm({
             </p>
           )}
         </Field>
-          </>
-        )}
 
-        {inputMode === "file" && (
         <Field label="Tải lên file video (có thể kèm ảnh số liệu)">
           <input
             ref={fileInputRef}
@@ -671,7 +658,6 @@ export function NewVideoIntakeForm({
             <p className="mt-1 text-xs text-gray-500">{uploadInfo}</p>
           )}
         </Field>
-        )}
 
         <Field label="Ghi chú nhân viên (tuỳ chọn)">
           <textarea

@@ -36,16 +36,21 @@ describe("classifyVideoSource", () => {
     expect(r.kind).toBe("youtube");
   });
 
-  it("driveWebUrl → fetch", () => {
+  it("file mode (drive_upload) + driveWebUrl → fetch", () => {
     const r = classifyVideoSource(
-      mk({ driveWebUrl: "https://x.supabase.co/storage/v1/object/public/video-uploads/1.mp4" }),
+      mk({
+        sourceType: "drive_upload",
+        driveWebUrl:
+          "https://x.supabase.co/storage/v1/object/public/video-uploads/1.mp4",
+      }),
     );
     expect(r.kind).toBe("fetch");
   });
 
-  it("attachment kind=video → fetch", () => {
+  it("file mode + attachment video → fetch", () => {
     const r = classifyVideoSource(
       mk({
+        sourceType: "drive_upload",
         attachments: [
           {
             drive_file_id: "",
@@ -58,6 +63,22 @@ describe("classifyVideoSource", () => {
       }),
     );
     expect(r.kind).toBe("fetch");
+  });
+
+  it("file mode nhưng chưa có file → none", () => {
+    const r = classifyVideoSource(mk({ sourceType: "drive_upload" }));
+    expect(r.kind).toBe("none");
+  });
+
+  it("link mode (tiktok) dù có file vẫn theo link → none (tôn trọng lựa chọn)", () => {
+    const r = classifyVideoSource(
+      mk({
+        sourceType: "tiktok_url",
+        originalVideoUrl: "https://www.tiktok.com/@a/video/1",
+        driveWebUrl: "https://x/v.mp4",
+      }),
+    );
+    expect(r.kind).toBe("none");
   });
 
   it("TikTok không file → none + warning (KHÔNG gửi link làm video)", () => {
