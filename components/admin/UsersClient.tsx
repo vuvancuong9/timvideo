@@ -15,6 +15,9 @@ type UserRow = {
   created_at: string;
 };
 
+const addInputClass =
+  "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+
 export function UsersClient({
   users,
   currentUserId,
@@ -28,6 +31,52 @@ export function UsersClient({
   );
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Form thêm nhân viên
+  const [showAdd, setShowAdd] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPass, setNewPass] = useState("");
+  const [newRole, setNewRole] = useState<UserRole>("staff");
+  const [adding, setAdding] = useState(false);
+  const [addOk, setAddOk] = useState<string | null>(null);
+
+  async function addUser(e: React.FormEvent) {
+    e.preventDefault();
+    setAdding(true);
+    setError(null);
+    setAddOk(null);
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: newName,
+          email: newEmail,
+          password: newPass,
+          role: newRole,
+        }),
+      });
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(
+          [j.error, j.detail].filter(Boolean).join(" — ") ||
+            "Tạo tài khoản thất bại",
+        );
+      }
+      setAddOk(`Đã tạo tài khoản ${newEmail}.`);
+      setNewName("");
+      setNewEmail("");
+      setNewPass("");
+      setNewRole("staff");
+      setShowAdd(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Có lỗi xảy ra");
+    } finally {
+      setAdding(false);
+    }
+  }
 
   async function save(id: string) {
     setBusy(id);
@@ -52,6 +101,102 @@ export function UsersClient({
 
   return (
     <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          {addOk && (
+            <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-green-700">
+              ✅ {addOk}
+            </p>
+          )}
+        </div>
+        <button
+          onClick={() => {
+            setShowAdd((v) => !v);
+            setError(null);
+            setAddOk(null);
+          }}
+          className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark"
+        >
+          {showAdd ? "Đóng" : "+ Thêm nhân viên"}
+        </button>
+      </div>
+
+      {showAdd && (
+        <form
+          onSubmit={addUser}
+          className="grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-white p-4 sm:grid-cols-2"
+        >
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Họ tên <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="VD: Nguyễn Văn A"
+              className={addInputClass}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Email <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="email"
+              required
+              value={newEmail}
+              onChange={(e) => setNewEmail(e.target.value)}
+              placeholder="nhanvien@email.com"
+              className={addInputClass}
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Mật khẩu <span className="text-red-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              minLength={6}
+              value={newPass}
+              onChange={(e) => setNewPass(e.target.value)}
+              placeholder="Tối thiểu 6 ký tự"
+              className={addInputClass}
+            />
+            <p className="mt-1 text-xs text-gray-400">
+              Hiện rõ để bạn gửi cho nhân viên. Họ có thể đổi sau.
+            </p>
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">
+              Quyền
+            </label>
+            <select
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value as UserRole)}
+              className={addInputClass}
+            >
+              {ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {ROLE_LABELS[r]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              disabled={adding}
+              className="rounded-lg bg-brand px-5 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
+            >
+              {adding ? "Đang tạo…" : "Tạo tài khoản"}
+            </button>
+          </div>
+        </form>
+      )}
+
       {error && (
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
