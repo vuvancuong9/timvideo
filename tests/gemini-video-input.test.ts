@@ -3,6 +3,7 @@ import {
   classifyVideoSource,
   reconcileEvidence,
   coerceEvidenceLevel,
+  toDirectFetchUrl,
 } from "@/lib/video-review/gemini-video-input";
 import type { SubmissionAttachment } from "@/types/videoIntake";
 
@@ -87,6 +88,28 @@ describe("reconcileEvidence (lấy MIN — model không thể tự nâng)", () =
   });
   it("code images_only + model frames → images_only", () => {
     expect(reconcileEvidence("images_only", "frames")).toBe("images_only");
+  });
+});
+
+describe("toDirectFetchUrl (Google Drive view -> tải trực tiếp)", () => {
+  it("file/d/ID/view -> uc?export=download", () => {
+    expect(
+      toDirectFetchUrl("https://drive.google.com/file/d/ABC123/view?usp=drivesdk"),
+    ).toBe("https://drive.google.com/uc?export=download&id=ABC123");
+  });
+  it("open?id=ID -> uc?export=download", () => {
+    expect(toDirectFetchUrl("https://drive.google.com/open?id=XYZ789")).toBe(
+      "https://drive.google.com/uc?export=download&id=XYZ789",
+    );
+  });
+  it("Supabase Storage URL giữ nguyên", () => {
+    const u =
+      "https://x.supabase.co/storage/v1/object/public/video-uploads/a/b.mp4";
+    expect(toDirectFetchUrl(u)).toBe(u);
+  });
+  it("YouTube URL giữ nguyên", () => {
+    const u = "https://www.youtube.com/watch?v=abc";
+    expect(toDirectFetchUrl(u)).toBe(u);
   });
 });
 

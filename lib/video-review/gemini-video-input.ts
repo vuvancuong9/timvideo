@@ -107,6 +107,21 @@ export function classifyVideoSource(args: {
   return { kind: "none", warning: "Không có nguồn video đọc được để gửi Gemini." };
 }
 
+/**
+ * Đổi link Google Drive dạng XEM (file/d/ID/view, open?id=, uc?id=) sang link TẢI
+ * TRỰC TIẾP (uc?export=download&id=ID). Link "view" trả về HTML viewer, KHÔNG
+ * phải video → trước đây gửi nhầm HTML cho Gemini gây lỗi 400. Link khác giữ nguyên.
+ */
+export function toDirectFetchUrl(url: string): string {
+  if (!url.includes("drive.google.com")) return url;
+  const m =
+    url.match(/\/file\/d\/([^/?#]+)/) || url.match(/[?&]id=([^&#]+)/);
+  if (m && m[1]) {
+    return `https://drive.google.com/uc?export=download&id=${m[1]}`;
+  }
+  return url;
+}
+
 function guessMime(url: string, hint: string | null, header: string | null): string {
   if (hint && hint.startsWith("video/")) return hint;
   if (header && header.startsWith("video/")) return header;
@@ -130,6 +145,15 @@ async function fetchVideoBytesBounded(
     const res = await fetch(url);
     if (!res.ok) {
       return { ok: false, warning: `Không tải được video (HTTP ${res.status}).` };
+    }
+    // Chặn HTML/JSON: vd link Google Drive chưa share công khai trả về trang web,
+    // không phải video — TUYỆT ĐỐI không gửi nội dung này cho Gemini làm "video".
+    const ct = (res.headers.get("content-type") || "").toLowerCase();
+    if (ct.startsWith("text/") || ct.includes("html") || ct.includes("application/json")) {
+      return {
+        ok: false,
+        warning: `URL không trả về video (content-type: ${ct || "?"}). Nếu là Google Drive, file cần được chia sẻ công khai (Anyone with link).`,
+      };
     }
     const len = Number(res.headers.get("content-length") ?? "0");
     if (len && len > MAX_FETCH_BYTES) {
@@ -246,7 +270,10 @@ export async function resolveVideoInput(args: {
     return { part: null, videoSeenSent: false, source: "none", warning: cls.warning };
   }
 
-  const fetched = await fetchVideoBytesBounded(cls.url, cls.mimeHint);
+  const fetched = await fetchVideoBytesBounded(
+    toDirectFetchUrl(cls.url),
+    cls.mimeHint,
+  );
   if (!fetched.ok) {
     return { part: null, videoSeenSent: false, source: "none", warning: fetched.warning };
   }
