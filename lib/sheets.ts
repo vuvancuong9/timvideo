@@ -13,9 +13,10 @@ import { extractDriveCreds } from "@/lib/drive";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
-/** Cột A..Q theo thứ tự. Đổi ở đây nếu muốn thêm/bớt cột. */
+/** Cột A..R theo thứ tự. Đổi ở đây nếu muốn thêm/bớt cột. */
 export const SHEET_HEADER = [
   "Sub ID",
+  "Tên sản phẩm",
   "Ngày",
   "Nhân viên",
   "Link Shopee",
@@ -57,6 +58,7 @@ export async function getSheetId(): Promise<string | null> {
 
 export type SubmissionSheetRow = {
   subId: string;
+  productName: string;
   date: string;
   employee: string;
   shopeeUrl: string;
@@ -73,6 +75,7 @@ export type SubmissionSheetRow = {
 function toRowArray(r: SubmissionSheetRow): (string | number)[] {
   return [
     r.subId,
+    r.productName,
     r.date,
     r.employee,
     r.shopeeUrl,
@@ -84,31 +87,80 @@ function toRowArray(r: SubmissionSheetRow): (string | number)[] {
     r.videoUrl,
     r.fileUrl,
     r.status,
-    "", // M Điểm bán hàng
-    "", // N An toàn chính sách
-    "", // O An toàn bản quyền
-    "", // P Điểm tổng
-    "", // Q Kết luận
+    "", // N Điểm bán hàng
+    "", // O An toàn chính sách
+    "", // P An toàn bản quyền
+    "", // Q Điểm tổng
+    "", // R Kết luận
   ];
 }
 
+/** sheetId (gid) của sheet đầu tiên — cần cho batchUpdate (chèn cột). */
+async function firstSheetId(
+  sheets: SheetsClient,
+  spreadsheetId: string,
+): Promise<number> {
+  const meta = await sheets.spreadsheets.get({
+    spreadsheetId,
+    fields: "sheets.properties.sheetId",
+  });
+  return meta.data.sheets?.[0]?.properties?.sheetId ?? 0;
+}
+
+/**
+ * Đảm bảo hàng tiêu đề khớp SHEET_HEADER (18 cột, có "Tên sản phẩm" ở cột B).
+ * - Sheet trống → ghi tiêu đề mới.
+ * - Sheet đã có "Tên sản phẩm" ở B → không làm gì.
+ * - Sheet theo layout CŨ (17 cột, B="Ngày") → CHÈN 1 cột trống ở B để dữ liệu
+ *   cũ dịch phải giữ thẳng hàng, rồi ghi lại tiêu đề mới (tự migrate 1 lần).
+ */
 async function ensureHeader(
   sheets: SheetsClient,
   spreadsheetId: string,
 ): Promise<void> {
   const res = await sheets.spreadsheets.values.get({
     spreadsheetId,
-    range: "A1:Q1",
+    range: "A1:R1",
   });
-  const has = (res.data.values?.[0]?.length ?? 0) > 0;
-  if (!has) {
+  const header = res.data.values?.[0] ?? [];
+  if (header.length === 0) {
+    // Sheet trống — ghi tiêu đề mới.
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: "A1",
       valueInputOption: "RAW",
       requestBody: { values: [SHEET_HEADER] },
     });
+    return;
   }
+  if (header[1] === "Tên sản phẩm") return; // đã migrate
+
+  // Layout cũ: chèn 1 cột ở vị trí B (index 1) cho TOÀN sheet rồi viết lại header.
+  const sheetId = await firstSheetId(sheets, spreadsheetId);
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [
+        {
+          insertDimension: {
+            range: {
+              sheetId,
+              dimension: "COLUMNS",
+              startIndex: 1,
+              endIndex: 2,
+            },
+            inheritFromBefore: false,
+          },
+        },
+      ],
+    },
+  });
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: "A1",
+    valueInputOption: "RAW",
+    requestBody: { values: [SHEET_HEADER] },
+  });
 }
 
 /** Append 1 dòng submission. Trả {ok, error?} để caller ghi audit. */
@@ -135,7 +187,7 @@ export async function appendSubmissionRow(
   }
 }
 
-/** Cập nhật điểm + kết luận vào dòng có Sub ID khớp (cột L..Q). */
+/** Cập nhật điểm + kết luận vào dòng có Sub ID khớp (cột N..R). */
 export async function updateSubmissionScores(
   subId: string,
   scores: {
@@ -168,7 +220,7 @@ export async function updateSubmissionScores(
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `L${rowNum}:Q${rowNum}`,
+      range: `N${rowNum}:R${rowNum}`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [

@@ -43,7 +43,7 @@ export default async function MyVideoReviewsPage() {
             <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-3 py-2">Ngày</th>
-                <th className="px-3 py-2">Sản phẩm</th>
+                <th className="px-3 py-2">Tên sản phẩm</th>
                 <th className="px-3 py-2">Trạng thái</th>
                 <th className="px-3 py-2">Creative</th>
                 <th className="px-3 py-2">Policy</th>
@@ -62,10 +62,10 @@ export default async function MyVideoReviewsPage() {
                     <td className="px-3 py-2">
                       <Link
                         href={`/staff/my-video-reviews/${v.id}`}
-                        className="block max-w-[240px] truncate text-brand hover:underline"
-                        title={v.shopee_product_url}
+                        className="block max-w-[240px] truncate font-medium text-brand hover:underline"
+                        title={v.product_name ?? v.shopee_product_url}
                       >
-                        {v.shopee_product_url}
+                        {v.product_name || v.shopee_product_url}
                       </Link>
                     </td>
                     <td className="px-3 py-2">

@@ -33,7 +33,7 @@ export function ReviewDashboardTable({
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
           <tr>
             <th className="px-3 py-2">Ngày</th>
-            <th className="px-3 py-2">Sản phẩm</th>
+            <th className="px-3 py-2">Tên sản phẩm</th>
             <th className="px-3 py-2">Nhân viên</th>
             <th className="px-3 py-2">Nguồn</th>
             <th className="px-3 py-2">Trạng thái</th>
@@ -53,10 +53,10 @@ export function ReviewDashboardTable({
               <td className="px-3 py-2">
                 <Link
                   href={`${reviewHrefBase}/${v.id}`}
-                  className="block max-w-[220px] truncate text-brand hover:underline"
-                  title={v.shopee_product_url}
+                  className="block max-w-[220px] truncate font-medium text-brand hover:underline"
+                  title={v.product_name ?? v.shopee_product_url}
                 >
-                  {v.shopee_product_url}
+                  {v.product_name || v.shopee_product_url}
                 </Link>
               </td>
               <td className="whitespace-nowrap px-3 py-2 text-gray-600">

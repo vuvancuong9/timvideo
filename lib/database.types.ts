@@ -696,6 +696,7 @@ export type Database = {
           id: string
           original_video_url: string | null
           perceptual_hash: string | null
+          product_name: string | null
           product_price: number
           shopee_product_url: string
           short_link: string | null
@@ -728,6 +729,7 @@ export type Database = {
           id?: string
           original_video_url?: string | null
           perceptual_hash?: string | null
+          product_name?: string | null
           product_price?: number
           shopee_product_url: string
           short_link?: string | null
@@ -760,6 +762,7 @@ export type Database = {
           id?: string
           original_video_url?: string | null
           perceptual_hash?: string | null
+          product_name?: string | null
           product_price?: number
           shopee_product_url?: string
           short_link?: string | null

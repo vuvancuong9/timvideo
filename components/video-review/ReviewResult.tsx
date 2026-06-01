@@ -56,6 +56,9 @@ export function ReviewResult({
       {/* Header */}
       <Card>
         <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm md:grid-cols-3">
+          <Info label="Tên sản phẩm">
+            {submission.product_name || "—"}
+          </Info>
           <Info label="Nguồn">
             {SOURCE_TYPE_LABELS[submission.source_type]}
           </Info>

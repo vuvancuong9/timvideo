@@ -19,6 +19,7 @@ export type SubmissionAttachment = {
 
 /** Input nhân viên gửi lên khi tạo submission. */
 export type CreateSubmissionInput = {
+  product_name: string;
   shopee_product_url: string;
   product_price: number;
   commission_percent: number;

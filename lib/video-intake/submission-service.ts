@@ -33,6 +33,9 @@ export async function createSubmissionWithJob(
   input: CreateSubmissionInput,
   actor?: { email?: string | null; fullName?: string | null },
 ): Promise<CreateSubmissionResult & { subId: string }> {
+  const productName = (input.product_name ?? "").trim();
+  if (!productName) throw new ApiError(400, "Thiếu tên sản phẩm");
+
   const shopeeUrl = (input.shopee_product_url ?? "").trim();
   if (!shopeeUrl) throw new ApiError(400, "Thiếu link sản phẩm Shopee");
 
@@ -78,6 +81,7 @@ export async function createSubmissionWithJob(
     return {
       created_by: userId,
       sub_id: subId,
+      product_name: productName,
       shopee_product_url: shopeeUrl,
       product_price: price,
       commission_percent: pct,
@@ -176,6 +180,7 @@ export async function createSubmissionWithJob(
       "";
     const r = await appendSubmissionRow({
       subId,
+      productName,
       date: sheetDate(),
       employee: actor?.fullName || actor?.email || account,
       shopeeUrl,

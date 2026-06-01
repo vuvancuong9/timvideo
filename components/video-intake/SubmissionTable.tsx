@@ -30,7 +30,8 @@ export function SubmissionTable({
         <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
           <tr>
             <Th>Ngày tạo</Th>
-            <Th>Sản phẩm</Th>
+            <Th>Tên sản phẩm</Th>
+            <Th>Link Shopee</Th>
             <Th>Giá</Th>
             <Th>%</Th>
             <Th>HH dự kiến</Th>
@@ -53,22 +54,30 @@ export function SubmissionTable({
                 {reviewHrefBase ? (
                   <Link
                     href={`${reviewHrefBase}/${v.id}`}
-                    className="block max-w-[240px] truncate text-brand hover:underline"
-                    title={v.shopee_product_url}
+                    className="block max-w-[240px] truncate font-medium text-brand hover:underline"
+                    title={v.product_name ?? undefined}
                   >
-                    {v.shopee_product_url}
+                    {v.product_name || "(chưa có tên)"}
                   </Link>
                 ) : (
-                  <a
-                    href={v.shopee_product_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    title={v.shopee_product_url}
-                    className="block max-w-[240px] truncate text-brand hover:underline"
+                  <span
+                    className="block max-w-[240px] truncate font-medium text-gray-800"
+                    title={v.product_name ?? undefined}
                   >
-                    {v.shopee_product_url}
-                  </a>
+                    {v.product_name || "(chưa có tên)"}
+                  </span>
                 )}
+              </Td>
+              <Td>
+                <a
+                  href={v.shopee_product_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  title={v.shopee_product_url}
+                  className="block max-w-[200px] truncate text-brand hover:underline"
+                >
+                  {v.shopee_product_url}
+                </a>
               </Td>
               <Td className="whitespace-nowrap">
                 {formatCurrency(v.product_price)}

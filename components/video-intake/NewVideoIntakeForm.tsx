@@ -49,6 +49,7 @@ export function NewVideoIntakeForm({
 }) {
   const router = useRouter();
 
+  const [productName, setProductName] = useState("");
   const [shopeeUrl, setShopeeUrl] = useState("");
   const [price, setPrice] = useState("");
   const [percent, setPercent] = useState("");
@@ -272,6 +273,9 @@ export function NewVideoIntakeForm({
   }
 
   function validateInputs(): string | null {
+    if (!productName.trim()) {
+      return "Vui lòng nhập tên sản phẩm.";
+    }
     if (!hasLink && !hasVideoFile) {
       return "Cần dán link video HOẶC tải lên file video. (Ảnh chỉ là dữ liệu bổ sung.)";
     }
@@ -343,6 +347,7 @@ export function NewVideoIntakeForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          product_name: productName.trim(),
           shopee_product_url: shopeeUrl,
           product_price: price,
           commission_percent: percent,
@@ -387,6 +392,16 @@ export function NewVideoIntakeForm({
             Mã tự sinh: ngày + tài khoản của bạn + số thứ tự. File tải lên sẽ
             được đặt tên theo mã này.
           </p>
+        </Field>
+        <Field label="Tên sản phẩm" required>
+          <input
+            type="text"
+            required
+            value={productName}
+            onChange={(e) => setProductName(e.target.value)}
+            placeholder="VD: Máy hút bụi cầm tay XYZ"
+            className={inputClass}
+          />
         </Field>
         <Field label="Link sản phẩm Shopee" required>
           <input

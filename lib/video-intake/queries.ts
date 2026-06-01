@@ -58,7 +58,7 @@ export async function fetchSubmissions(
     const safe = f.q.replace(/[%,()]/g, " ").trim();
     if (safe) {
       query = query.or(
-        `shopee_product_url.ilike.%${safe}%,original_video_url.ilike.%${safe}%,short_link.ilike.%${safe}%`,
+        `product_name.ilike.%${safe}%,shopee_product_url.ilike.%${safe}%,original_video_url.ilike.%${safe}%,short_link.ilike.%${safe}%`,
       );
     }
   }

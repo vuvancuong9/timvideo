@@ -129,7 +129,7 @@ export function AssignClient({
           <thead className="bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
             <tr>
               <th className="px-3 py-2"></th>
-              <th className="px-3 py-2">Sản phẩm</th>
+              <th className="px-3 py-2">Tên sản phẩm</th>
               <th className="px-3 py-2">Nguồn</th>
               <th className="px-3 py-2">HH dự kiến</th>
               <th className="px-3 py-2">Trạng thái</th>
@@ -152,10 +152,10 @@ export function AssignClient({
                     href={v.original_video_url ?? v.shopee_product_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="block max-w-[200px] truncate text-brand hover:underline"
-                    title={v.shopee_product_url}
+                    className="block max-w-[200px] truncate font-medium text-brand hover:underline"
+                    title={v.product_name ?? v.shopee_product_url}
                   >
-                    {v.shopee_product_url}
+                    {v.product_name || v.shopee_product_url}
                   </a>
                 </td>
                 <td className="px-3 py-2">
