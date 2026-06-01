@@ -58,6 +58,8 @@ export function NewVideoIntakeForm({
   const [videoUrl, setVideoUrl] = useState("");
   const [sourceType, setSourceType] = useState<VideoSourceType>("tiktok_url");
   const [sourceTouched, setSourceTouched] = useState(false);
+  // Chấm theo file video tải lên hay theo link video (chọn 1, ẩn cái kia).
+  const [inputMode, setInputMode] = useState<"file" | "link">("file");
   const [note, setNote] = useState("");
   const [files, setFiles] = useState<File[]>([]);
 
@@ -98,6 +100,22 @@ export function NewVideoIntakeForm({
     });
   }
 
+  /** Đổi nguồn chấm điểm (file/link). Xóa dữ liệu nguồn kia + buộc chấm lại. */
+  function chooseMode(m: "file" | "link") {
+    if (m === inputMode) return;
+    setInputMode(m);
+    invalidatePreview();
+    if (m === "link") {
+      for (const f of files) uploadCache.current.delete(f);
+      setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    } else {
+      setVideoUrl("");
+      setDuplicate(false);
+      setDupMsg(null);
+    }
+  }
+
   // Lấy Sub ID dự kiến cho nhân viên hiện tại (ngày + account + STT).
   useEffect(() => {
     let alive = true;
@@ -121,11 +139,8 @@ export function NewVideoIntakeForm({
     if (videoUrl.trim()) setSourceType(detectVideoSource(videoUrl));
   }, [videoUrl, sourceTouched]);
 
-  const effectiveSource: VideoSourceType = hasLink
-    ? sourceType
-    : hasVideoFile
-      ? "drive_upload"
-      : sourceType;
+  const effectiveSource: VideoSourceType =
+    inputMode === "file" ? "drive_upload" : sourceType;
 
   const estimated = useMemo(() => {
     const p = Number(price);
@@ -300,8 +315,11 @@ export function NewVideoIntakeForm({
     if (!productName.trim()) {
       return "Vui lòng nhập tên sản phẩm.";
     }
-    if (!hasLink && !hasVideoFile) {
-      return "Cần dán link video HOẶC tải lên file video. (Ảnh chỉ là dữ liệu bổ sung.)";
+    if (inputMode === "file" && !hasVideoFile) {
+      return "Hãy tải lên file video để chấm điểm (hoặc chuyển sang 'Link video').";
+    }
+    if (inputMode === "link" && !hasLink) {
+      return "Hãy dán link video để chấm điểm (hoặc chuyển sang 'File video').";
     }
     return null;
   }
@@ -500,13 +518,44 @@ export function NewVideoIntakeForm({
           Thông tin video
         </legend>
 
-        <p className="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
-          Bạn có thể <b>dán link video</b> hoặc <b>tải file lên</b> — chỉ cần 1
-          trong 2. Có thể chọn <b>nhiều file</b> cùng lúc, gồm cả <b>ảnh chụp lượt
-          like / view / comment</b> để AI đọc số liệu chấm chính xác hơn.
-        </p>
+        <div>
+          <p className="mb-2 text-xs font-medium text-gray-600">
+            Chấm điểm dựa trên:
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => chooseMode("file")}
+              className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+                inputMode === "file"
+                  ? "border-brand bg-blue-50 text-brand"
+                  : "border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              📹 File video tải lên
+            </button>
+            <button
+              type="button"
+              onClick={() => chooseMode("link")}
+              className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+                inputMode === "link"
+                  ? "border-brand bg-blue-50 text-brand"
+                  : "border-gray-300 text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              🔗 Link video
+            </button>
+          </div>
+          <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
+            {inputMode === "file"
+              ? "Tải file video lên để AI XEM video thật và chấm chính xác nhất (có thể kèm ảnh số liệu like/view/comment)."
+              : "Dán link video. YouTube: AI xem được trực tiếp. TikTok/Facebook: chỉ chấm SƠ BỘ (AI không tải được video) — muốn chính xác hãy chuyển sang “File video”."}
+          </p>
+        </div>
 
-        <Field label="Nguồn video">
+        {inputMode === "link" && (
+          <>
+            <Field label="Nguồn video">
           <select
             value={sourceType}
             onChange={(e) => {
@@ -551,8 +600,11 @@ export function NewVideoIntakeForm({
             </p>
           )}
         </Field>
+          </>
+        )}
 
-        <Field label="Tải lên video và/hoặc ảnh (chọn nhiều file được)">
+        {inputMode === "file" && (
+        <Field label="Tải lên file video (có thể kèm ảnh số liệu)">
           <input
             ref={fileInputRef}
             type="file"
@@ -619,6 +671,7 @@ export function NewVideoIntakeForm({
             <p className="mt-1 text-xs text-gray-500">{uploadInfo}</p>
           )}
         </Field>
+        )}
 
         <Field label="Ghi chú nhân viên (tuỳ chọn)">
           <textarea
