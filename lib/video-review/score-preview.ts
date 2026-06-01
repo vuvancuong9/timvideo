@@ -13,6 +13,7 @@ import {
   computeCreativeScore,
   decideFinalAction,
 } from "@/lib/video-review/final-decision";
+import { getThresholds } from "@/lib/video-review/policy-config";
 import { loadImagePartsFromAttachments } from "@/lib/video-review/images";
 import type {
   ContentAnalysisResult,
@@ -94,14 +95,18 @@ export async function scoreVideoPreview(
   });
   const creativeScore = computeCreativeScore(creative.result);
 
-  // STAGE: FINAL DECISION (deterministic)
-  const decision = decideFinalAction({
-    creative_score: creativeScore,
-    policy_safety_score: policy.result.policy_safety_score,
-    copyright_safety_score: policy.result.copyright_safety_score,
-    final_policy_level: policy.result.final_policy_level,
-    ip_trademark_risk: policy.result.ip_trademark_risk,
-  });
+  // STAGE: FINAL DECISION (deterministic) — dùng ngưỡng admin cấu hình.
+  const thresholds = await getThresholds();
+  const decision = decideFinalAction(
+    {
+      creative_score: creativeScore,
+      policy_safety_score: policy.result.policy_safety_score,
+      copyright_safety_score: policy.result.copyright_safety_score,
+      final_policy_level: policy.result.final_policy_level,
+      ip_trademark_risk: policy.result.ip_trademark_risk,
+    },
+    thresholds,
+  );
 
   return {
     analysis: analysis.result,

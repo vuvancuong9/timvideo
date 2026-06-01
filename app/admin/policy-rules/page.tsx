@@ -1,33 +1,31 @@
 import { requireRole } from "@/lib/auth/session";
 import { Card, PageHeader } from "@/components/ui";
-import {
-  FINAL_ACTION_RULES,
-  FINAL_DECISION_WEIGHTS,
-} from "@/lib/video-review/policy-rules";
+import { FINAL_ACTION_RULES } from "@/lib/video-review/policy-rules";
+import { getThresholds } from "@/lib/video-review/policy-config";
+import { PolicyRulesClient } from "@/components/admin/PolicyRulesClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPolicyRulesPage() {
   await requireRole(["admin"]);
+  const thresholds = await getThresholds();
+
+  // Các nhóm mô tả tĩnh (nhóm rủi ro, confidence) — giữ read-only, bỏ nhóm
+  // "Thứ tự quyết định" vì giờ đã có form ngưỡng sửa được ở trên.
+  const staticGroups = FINAL_ACTION_RULES.filter(
+    (g) => !g.title.startsWith("Thứ tự quyết định"),
+  );
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Policy & quyết định"
-        description="Logic deterministic mà hệ thống dùng để ra hành động cuối (read-only)."
+        description="Chỉnh ngưỡng + trọng số quyết định hành động cuối. Áp dụng cho các lần chấm tiếp theo."
       />
 
-      <Card>
-        <h2 className="mb-2 font-semibold text-gray-900">Công thức điểm</h2>
-        <p className="text-sm text-gray-600">
-          <strong>creative_score</strong> = {FINAL_DECISION_WEIGHTS.creative_score}
-        </p>
-        <p className="mt-1 text-sm text-gray-600">
-          <strong>final_score</strong> = {FINAL_DECISION_WEIGHTS.final_score}
-        </p>
-      </Card>
+      <PolicyRulesClient initial={thresholds} />
 
-      {FINAL_ACTION_RULES.map((group) => (
+      {staticGroups.map((group) => (
         <Card key={group.title}>
           <h2 className="mb-2 font-semibold text-gray-900">{group.title}</h2>
           <ul className="list-inside list-disc space-y-1 text-sm text-gray-700">

@@ -21,6 +21,7 @@ import {
   computeCreativeScore,
   decideFinalAction,
 } from "@/lib/video-review/final-decision";
+import { getThresholds } from "@/lib/video-review/policy-config";
 import { getDriveFileInfo } from "@/lib/video-intake/drive";
 import {
   loadImagePartsFromAttachments,
@@ -263,13 +264,17 @@ async function processClaimedJob(
 
   // STAGE 6: FINAL DECISION (deterministic — code quyết định)
   await setStage(db, job.id, "decision");
-  const decision = decideFinalAction({
-    creative_score: creativeScore,
-    policy_safety_score: policy.result.policy_safety_score,
-    copyright_safety_score: policy.result.copyright_safety_score,
-    final_policy_level: policy.result.final_policy_level,
-    ip_trademark_risk: policy.result.ip_trademark_risk,
-  });
+  const thresholds = await getThresholds();
+  const decision = decideFinalAction(
+    {
+      creative_score: creativeScore,
+      policy_safety_score: policy.result.policy_safety_score,
+      copyright_safety_score: policy.result.copyright_safety_score,
+      final_policy_level: policy.result.final_policy_level,
+      ip_trademark_risk: policy.result.ip_trademark_risk,
+    },
+    thresholds,
+  );
   await db.from("video_final_decisions").insert({
     video_submission_id: submission.id,
     creative_score: decision.creative_score,
