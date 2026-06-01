@@ -1,7 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useRouter } from "next/navigation";
+import {
+  FacebookPagesManager,
+  type FacebookPage,
+} from "@/components/admin/FacebookPagesManager";
 
 type Account = {
   id: string;
@@ -14,10 +18,13 @@ type Account = {
 
 export function AffiliateAccountsClient({
   accounts,
+  pagesByAccount = {},
 }: {
   accounts: Account[];
+  pagesByAccount?: Record<string, FacebookPage[]>;
 }) {
   const router = useRouter();
+  const [expanded, setExpanded] = useState<string | null>(null);
   const [form, setForm] = useState({
     code: "",
     name: "",
@@ -157,12 +164,14 @@ export function AffiliateAccountsClient({
               <th className="px-3 py-2">Nền tảng</th>
               <th className="px-3 py-2">Ghi chú</th>
               <th className="px-3 py-2">Hoạt động</th>
+              <th className="px-3 py-2">Facebook Pages</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {accounts.map((a) => (
-              <tr key={a.id} className="hover:bg-gray-50">
+              <Fragment key={a.id}>
+              <tr className="hover:bg-gray-50">
                 <td className="px-3 py-2 font-medium">{a.code}</td>
                 <td className="px-3 py-2">
                   <input
@@ -203,6 +212,17 @@ export function AffiliateAccountsClient({
                 </td>
                 <td className="px-3 py-2">
                   <button
+                    onClick={() =>
+                      setExpanded((cur) => (cur === a.id ? null : a.id))
+                    }
+                    className="rounded-lg border border-gray-300 px-3 py-1 text-xs font-medium text-gray-700 hover:bg-gray-100"
+                  >
+                    {(pagesByAccount[a.id]?.length ?? 0)} page
+                    {expanded === a.id ? " ▲" : " ▼"}
+                  </button>
+                </td>
+                <td className="px-3 py-2">
+                  <button
                     onClick={() => save(a.id)}
                     disabled={busy === a.id}
                     className="rounded-lg bg-brand px-3 py-1 text-xs font-semibold text-white hover:bg-brand-dark disabled:opacity-50"
@@ -211,6 +231,17 @@ export function AffiliateAccountsClient({
                   </button>
                 </td>
               </tr>
+              {expanded === a.id && (
+                <tr>
+                  <td colSpan={7} className="px-3 pb-3">
+                    <FacebookPagesManager
+                      accountId={a.id}
+                      initialPages={pagesByAccount[a.id] ?? []}
+                    />
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>

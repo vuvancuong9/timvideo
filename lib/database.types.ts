@@ -118,6 +118,57 @@ export type Database = {
           },
         ]
       }
+      facebook_pages: {
+        Row: {
+          affiliate_account_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          name: string
+          note: string | null
+          updated_at: string
+          url: string | null
+        }
+        Insert: {
+          affiliate_account_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          note?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Update: {
+          affiliate_account_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          note?: string | null
+          updated_at?: string
+          url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "facebook_pages_affiliate_account_id_fkey"
+            columns: ["affiliate_account_id"]
+            isOneToOne: false
+            referencedRelation: "affiliate_accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "facebook_pages_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       facebook_policy_checks: {
         Row: {
           adult_sensitive_risk: Database["public"]["Enums"]["risk_level"]

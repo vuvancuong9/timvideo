@@ -13,13 +13,26 @@ export default async function AdminAffiliateAccountsPage() {
     .select("id,code,name,platform,note,is_active")
     .order("code");
 
+  const { data: pages } = await supabase
+    .from("facebook_pages")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  const pagesByAccount: Record<string, NonNullable<typeof pages>> = {};
+  for (const p of pages ?? []) {
+    (pagesByAccount[p.affiliate_account_id] ??= []).push(p);
+  }
+
   return (
     <div>
       <PageHeader
         title="Tài khoản affiliate"
-        description="Quản lý tài khoản affiliate."
+        description="Quản lý tài khoản affiliate và Facebook Page liên kết."
       />
-      <AffiliateAccountsClient accounts={accounts ?? []} />
+      <AffiliateAccountsClient
+        accounts={accounts ?? []}
+        pagesByAccount={pagesByAccount}
+      />
     </div>
   );
 }
