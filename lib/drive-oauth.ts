@@ -161,6 +161,10 @@ export async function createOAuthResumableSession(params: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json; charset=UTF-8",
       "X-Upload-Content-Type": params.mimeType || "application/octet-stream",
+      // QUAN TRỌNG cho CORS: Origin của request KHỞI TẠO quyết định
+      // Access-Control-Allow-Origin cho cả phiên resumable. Nếu thiếu, trình
+      // duyệt PUT thẳng lên session URL sẽ bị chặn ("Lỗi mạng khi upload Drive").
+      ...(params.origin ? { Origin: params.origin } : {}),
       ...(params.fileSize
         ? { "X-Upload-Content-Length": String(params.fileSize) }
         : {}),
