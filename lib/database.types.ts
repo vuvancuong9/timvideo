@@ -189,6 +189,7 @@ export type Database = {
           raw_response: Json
           restricted_product_risk: Database["public"]["Enums"]["risk_level"]
           risk_reasons: Json
+          risk_scores: Json
           shocking_content_risk: Database["public"]["Enums"]["risk_level"]
           suggested_fixes: Json
           video_submission_id: string
@@ -212,6 +213,7 @@ export type Database = {
           raw_response?: Json
           restricted_product_risk?: Database["public"]["Enums"]["risk_level"]
           risk_reasons?: Json
+          risk_scores?: Json
           shocking_content_risk?: Database["public"]["Enums"]["risk_level"]
           suggested_fixes?: Json
           video_submission_id: string
@@ -235,6 +237,7 @@ export type Database = {
           raw_response?: Json
           restricted_product_risk?: Database["public"]["Enums"]["risk_level"]
           risk_reasons?: Json
+          risk_scores?: Json
           shocking_content_risk?: Database["public"]["Enums"]["risk_level"]
           suggested_fixes?: Json
           video_submission_id?: string

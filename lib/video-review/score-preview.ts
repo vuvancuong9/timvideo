@@ -14,6 +14,7 @@ import {
   decideFinalAction,
 } from "@/lib/video-review/final-decision";
 import { getThresholds } from "@/lib/video-review/policy-config";
+import { getEnabledRiskGroups } from "@/lib/video-review/policy-groups-config";
 import { loadImagePartsFromAttachments } from "@/lib/video-review/images";
 import type {
   ContentAnalysisResult,
@@ -97,13 +98,23 @@ export async function scoreVideoPreview(
 
   // STAGE: FINAL DECISION (deterministic) — dùng ngưỡng admin cấu hình.
   const thresholds = await getThresholds();
+  const groups = await getEnabledRiskGroups();
+  const rs = policy.result.risk_scores;
+  const policyCriticalBlock = groups.some(
+    (g) => g.critical_blocks && g.category === "policy" && rs[g.key] === "critical",
+  );
+  const copyrightCriticalBlock = groups.some(
+    (g) =>
+      g.critical_blocks && g.category === "copyright" && rs[g.key] === "critical",
+  );
   const decision = decideFinalAction(
     {
       creative_score: creativeScore,
       policy_safety_score: policy.result.policy_safety_score,
       copyright_safety_score: policy.result.copyright_safety_score,
       final_policy_level: policy.result.final_policy_level,
-      ip_trademark_risk: policy.result.ip_trademark_risk,
+      policy_critical_block: policyCriticalBlock,
+      copyright_critical_block: copyrightCriticalBlock,
     },
     thresholds,
   );

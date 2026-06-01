@@ -40,14 +40,8 @@ export type ContentAnalysisResult = {
 export type PolicyCheckResult = {
   policy_safety_score: number;
   copyright_safety_score: number;
-  misleading_claim_risk: RiskLevel;
-  health_claim_risk: RiskLevel;
-  personal_attribute_risk: RiskLevel;
-  before_after_risk: RiskLevel;
-  shocking_content_risk: RiskLevel;
-  adult_sensitive_risk: RiskLevel;
-  ip_trademark_risk: RiskLevel;
-  restricted_product_risk: RiskLevel;
+  /** Mức rủi ro theo từng nhóm cấu hình động: { group_key -> RiskLevel }. */
+  risk_scores: Record<string, RiskLevel>;
   risk_reasons: string[];
   policy_references: string[];
   suggested_fixes: string[];
@@ -76,7 +70,15 @@ export type FinalDecisionInput = {
   policy_safety_score: number;
   copyright_safety_score: number;
   final_policy_level: RiskLevel;
-  ip_trademark_risk: RiskLevel;
+  /**
+   * @deprecated Alias tương thích — giữ cho test/cũ. Production truyền
+   * copyright_critical_block (suy từ các nhóm rủi ro cấu hình động).
+   */
+  ip_trademark_risk?: RiskLevel;
+  /** Có nhóm category="policy" + critical_blocks bị chấm "critical" → reject policy. */
+  policy_critical_block?: boolean;
+  /** Có nhóm category="copyright" + critical_blocks bị chấm "critical" → reject copyright. */
+  copyright_critical_block?: boolean;
 };
 
 export type FinalDecisionResult = {

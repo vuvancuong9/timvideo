@@ -22,6 +22,7 @@ import {
   decideFinalAction,
 } from "@/lib/video-review/final-decision";
 import { getThresholds } from "@/lib/video-review/policy-config";
+import { getEnabledRiskGroups } from "@/lib/video-review/policy-groups-config";
 import { getDriveFileInfo } from "@/lib/video-intake/drive";
 import {
   loadImagePartsFromAttachments,
@@ -195,6 +196,7 @@ async function processClaimedJob(
       : "Chỉ có link ngoài, không có file video.",
     hasVideoFile,
   });
+  const rs = policy.result.risk_scores;
   await db.from("facebook_policy_checks").insert({
     video_submission_id: submission.id,
     provider: "openai",
@@ -202,14 +204,17 @@ async function processClaimedJob(
     confidence: policy.result.confidence,
     policy_safety_score: policy.result.policy_safety_score,
     copyright_safety_score: policy.result.copyright_safety_score,
-    misleading_claim_risk: policy.result.misleading_claim_risk,
-    health_claim_risk: policy.result.health_claim_risk,
-    personal_attribute_risk: policy.result.personal_attribute_risk,
-    before_after_risk: policy.result.before_after_risk,
-    shocking_content_risk: policy.result.shocking_content_risk,
-    adult_sensitive_risk: policy.result.adult_sensitive_risk,
-    ip_trademark_risk: policy.result.ip_trademark_risk,
-    restricted_product_risk: policy.result.restricted_product_risk,
+    risk_scores:
+      rs as Database["public"]["Tables"]["facebook_policy_checks"]["Insert"]["risk_scores"],
+    // Dual-write 8 cột legacy (back-compat reader cũ); khóa thiếu -> 'low'.
+    misleading_claim_risk: rs.misleading_claim_risk ?? "low",
+    health_claim_risk: rs.health_claim_risk ?? "low",
+    personal_attribute_risk: rs.personal_attribute_risk ?? "low",
+    before_after_risk: rs.before_after_risk ?? "low",
+    shocking_content_risk: rs.shocking_content_risk ?? "low",
+    adult_sensitive_risk: rs.adult_sensitive_risk ?? "low",
+    ip_trademark_risk: rs.ip_trademark_risk ?? "low",
+    restricted_product_risk: rs.restricted_product_risk ?? "low",
     risk_reasons: policy.result.risk_reasons,
     policy_references: policy.result.policy_references,
     suggested_fixes: policy.result.suggested_fixes,
@@ -265,13 +270,23 @@ async function processClaimedJob(
   // STAGE 6: FINAL DECISION (deterministic — code quyết định)
   await setStage(db, job.id, "decision");
   const thresholds = await getThresholds();
+  // Suy điều kiện reject-critical từ nhóm rủi ro cấu hình động (thay coupling ip_trademark cũ).
+  const decisionGroups = await getEnabledRiskGroups();
+  const policyCriticalBlock = decisionGroups.some(
+    (g) => g.critical_blocks && g.category === "policy" && rs[g.key] === "critical",
+  );
+  const copyrightCriticalBlock = decisionGroups.some(
+    (g) =>
+      g.critical_blocks && g.category === "copyright" && rs[g.key] === "critical",
+  );
   const decision = decideFinalAction(
     {
       creative_score: creativeScore,
       policy_safety_score: policy.result.policy_safety_score,
       copyright_safety_score: policy.result.copyright_safety_score,
       final_policy_level: policy.result.final_policy_level,
-      ip_trademark_risk: policy.result.ip_trademark_risk,
+      policy_critical_block: policyCriticalBlock,
+      copyright_critical_block: copyrightCriticalBlock,
     },
     thresholds,
   );

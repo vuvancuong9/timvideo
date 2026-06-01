@@ -7,10 +7,11 @@ import {
   FINAL_ACTION_LABELS,
   FINAL_ACTION_COLORS,
   CONFIDENCE_LABELS,
-  POLICY_RISK_LABELS,
+  readRiskLevel,
   FINAL_ACTION_VERDICT,
   VERDICT_BG,
 } from "@/lib/video-intake/labels";
+import { getRiskGroups } from "@/lib/video-review/policy-groups-config";
 import type { SubmissionWithRelations, ReviewBundle } from "@/lib/video-intake/queries";
 import type { RiskLevel } from "@/types/videoReview";
 
@@ -40,7 +41,7 @@ function RiskRow({ label, level }: { label: string; level: RiskLevel }) {
   );
 }
 
-export function ReviewResult({
+export async function ReviewResult({
   submission,
   bundle,
 }: {
@@ -48,6 +49,7 @@ export function ReviewResult({
   bundle: ReviewBundle;
 }) {
   const { analysis, policy, creative, decision, job } = bundle;
+  const riskGroups = await getRiskGroups();
 
   return (
     <div className="space-y-6">
@@ -197,42 +199,13 @@ export function ReviewResult({
             hoặc bỏ. (Độ tin cậy: {CONFIDENCE_LABELS[policy.confidence]})
           </p>
           <div className="grid gap-x-8 md:grid-cols-2">
-            <div>
+            {riskGroups.map((g) => (
               <RiskRow
-                label={POLICY_RISK_LABELS.misleading_claim_risk}
-                level={policy.misleading_claim_risk}
+                key={g.key}
+                label={g.label_vi}
+                level={readRiskLevel(policy.risk_scores, policy, g.key)}
               />
-              <RiskRow
-                label={POLICY_RISK_LABELS.health_claim_risk}
-                level={policy.health_claim_risk}
-              />
-              <RiskRow
-                label={POLICY_RISK_LABELS.personal_attribute_risk}
-                level={policy.personal_attribute_risk}
-              />
-              <RiskRow
-                label={POLICY_RISK_LABELS.before_after_risk}
-                level={policy.before_after_risk}
-              />
-            </div>
-            <div>
-              <RiskRow
-                label={POLICY_RISK_LABELS.shocking_content_risk}
-                level={policy.shocking_content_risk}
-              />
-              <RiskRow
-                label={POLICY_RISK_LABELS.adult_sensitive_risk}
-                level={policy.adult_sensitive_risk}
-              />
-              <RiskRow
-                label={POLICY_RISK_LABELS.ip_trademark_risk}
-                level={policy.ip_trademark_risk}
-              />
-              <RiskRow
-                label={POLICY_RISK_LABELS.restricted_product_risk}
-                level={policy.restricted_product_risk}
-              />
-            </div>
+            ))}
           </div>
 
           {jsonToStrings(policy.risk_reasons).length > 0 && (

@@ -4,12 +4,16 @@
  */
 import { getOpenAIConfig } from "@/lib/secrets";
 import {
-  FACEBOOK_POLICY_SYSTEM_PROMPT,
+  buildFacebookPolicySystemPrompt,
   buildFacebookPolicyUserPrompt,
   type PolicyPromptInput,
 } from "@/lib/video-review/prompts/facebook-policy";
+import { getEnabledRiskGroups } from "@/lib/video-review/policy-groups-config";
 import {
-  capConfidenceWhenNoFile,
+  capConfidence,
+  getConfidenceRule,
+} from "@/lib/video-review/confidence-config";
+import {
   coerceConfidence,
   coerceRisk,
   coerceScore,
@@ -17,7 +21,7 @@ import {
   extractJson,
   withRetry,
 } from "@/lib/video-review/ai-util";
-import type { PolicyCheckResult } from "@/types/videoReview";
+import type { PolicyCheckResult, RiskLevel } from "@/types/videoReview";
 
 export type OpenAIPolicyOutput = {
   result: PolicyCheckResult;
@@ -33,7 +37,9 @@ export async function checkPolicyWithOpenAI(
     throw new Error("Thiếu OPENAI_API_KEY để kiểm tra chính sách");
   }
 
-  const userPrompt = buildFacebookPolicyUserPrompt(input);
+  const groups = await getEnabledRiskGroups();
+  const rule = await getConfidenceRule();
+  const userPrompt = buildFacebookPolicyUserPrompt(input, groups);
 
   const raw = await withRetry(
     async () => {
@@ -48,7 +54,10 @@ export async function checkPolicyWithOpenAI(
           temperature: 0.2,
           response_format: { type: "json_object" },
           messages: [
-            { role: "system", content: FACEBOOK_POLICY_SYSTEM_PROMPT },
+            {
+              role: "system",
+              content: buildFacebookPolicySystemPrompt(groups),
+            },
             { role: "user", content: userPrompt },
           ],
         }),
@@ -65,24 +74,24 @@ export async function checkPolicyWithOpenAI(
   const text: string = raw?.choices?.[0]?.message?.content ?? "";
   const parsed = extractJson<Record<string, unknown>>(text);
 
+  // Mỗi nhóm cấu hình → 1 mức rủi ro. Khóa AI thiếu → coerceRisk(undefined)="low" (an toàn).
+  const risk_scores: Record<string, RiskLevel> = {};
+  for (const g of groups) {
+    risk_scores[g.key] = coerceRisk(parsed[g.key]);
+  }
+
   const result: PolicyCheckResult = {
     policy_safety_score: coerceScore(parsed.policy_safety_score),
     copyright_safety_score: coerceScore(parsed.copyright_safety_score),
-    misleading_claim_risk: coerceRisk(parsed.misleading_claim_risk),
-    health_claim_risk: coerceRisk(parsed.health_claim_risk),
-    personal_attribute_risk: coerceRisk(parsed.personal_attribute_risk),
-    before_after_risk: coerceRisk(parsed.before_after_risk),
-    shocking_content_risk: coerceRisk(parsed.shocking_content_risk),
-    adult_sensitive_risk: coerceRisk(parsed.adult_sensitive_risk),
-    ip_trademark_risk: coerceRisk(parsed.ip_trademark_risk),
-    restricted_product_risk: coerceRisk(parsed.restricted_product_risk),
+    risk_scores,
     risk_reasons: coerceStringArray(parsed.risk_reasons),
     policy_references: coerceStringArray(parsed.policy_references),
     suggested_fixes: coerceStringArray(parsed.suggested_fixes),
     final_policy_level: coerceRisk(parsed.final_policy_level),
-    confidence: capConfidenceWhenNoFile(
+    confidence: capConfidence(
       coerceConfidence(parsed.confidence),
       input.hasVideoFile,
+      rule,
     ),
   };
 

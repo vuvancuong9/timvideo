@@ -9,13 +9,16 @@ import {
   type CreativePromptInput,
 } from "@/lib/video-review/prompts/creative-score";
 import {
-  capConfidenceWhenNoFile,
   coerceConfidence,
   coerceScore,
   coerceStringArray,
   extractJson,
   withRetry,
 } from "@/lib/video-review/ai-util";
+import {
+  capConfidence,
+  getConfidenceRule,
+} from "@/lib/video-review/confidence-config";
 import type { CreativeScoreModelResult } from "@/types/videoReview";
 
 export type OpenAICreativeOutput = {
@@ -32,6 +35,7 @@ export async function scoreCreativeWithOpenAI(
     throw new Error("Thiếu OPENAI_API_KEY để chấm điểm sáng tạo");
   }
 
+  const rule = await getConfidenceRule();
   const userPrompt = buildCreativeScoreUserPrompt(input);
 
   const raw = await withRetry(
@@ -75,9 +79,10 @@ export async function scoreCreativeWithOpenAI(
     suggested_titles: coerceStringArray(parsed.suggested_titles),
     suggested_scripts: coerceStringArray(parsed.suggested_scripts),
     suggested_edits: coerceStringArray(parsed.suggested_edits),
-    confidence: capConfidenceWhenNoFile(
+    confidence: capConfidence(
       coerceConfidence(parsed.confidence),
       input.hasVideoFile,
+      rule,
     ),
   };
 

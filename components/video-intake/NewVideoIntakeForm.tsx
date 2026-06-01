@@ -10,6 +10,7 @@ import {
   PreviewResultPanel,
   type PreviewData,
 } from "@/components/video-review/PreviewResultPanel";
+import type { PolicyRiskGroup } from "@/lib/video-review/policy-groups-config";
 import type {
   VideoSourceType,
   SubmissionAttachment,
@@ -69,6 +70,7 @@ export function NewVideoIntakeForm({
 
   const [scoring, setScoring] = useState(false);
   const [preview, setPreview] = useState<PreviewData | null>(null);
+  const [riskGroups, setRiskGroups] = useState<PolicyRiskGroup[]>([]);
   const [subId, setSubId] = useState<string>("");
 
   // Bắt buộc chấm điểm xong mới cho gửi. Khi đổi thông tin ảnh hưởng điểm thì
@@ -323,6 +325,7 @@ export function NewVideoIntakeForm({
         );
       }
       setPreview(json.preview as PreviewData);
+      setRiskGroups((json.riskGroups as PolicyRiskGroup[]) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
     } finally {
@@ -619,7 +622,9 @@ export function NewVideoIntakeForm({
         </span>
       </div>
 
-      {preview && <PreviewResultPanel data={preview} />}
+      {preview && (
+        <PreviewResultPanel data={preview} riskGroups={riskGroups} />
+      )}
     </form>
   );
 }

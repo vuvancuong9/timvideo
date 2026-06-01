@@ -64,12 +64,3 @@ export function coerceStringArray(v: unknown): string[] {
   if (!Array.isArray(v)) return [];
   return v.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).slice(0, 50);
 }
-
-/** Hạ confidence xuống tối đa 'medium' khi thiếu file video (không cho 'high'). */
-export function capConfidenceWhenNoFile(
-  c: AnalysisConfidence,
-  hasVideoFile: boolean,
-): AnalysisConfidence {
-  if (hasVideoFile) return c;
-  return c === "high" ? "medium" : c;
-}

@@ -63,23 +63,26 @@ export function decideFinalAction(
     creative * t.w_creative + policy * t.w_policy + copyright * t.w_copyright,
   );
 
+  // Critical-block: production truyền boolean (suy từ nhóm rủi ro cấu hình động);
+  // fallback alias theo field cũ để test/cũ vẫn đúng. Mặc định = hành vi gốc.
+  const policyCritical =
+    input.policy_critical_block ?? input.final_policy_level === "critical";
+  const copyrightCritical =
+    input.copyright_critical_block ?? input.ip_trademark_risk === "critical";
+
   const blocking_reasons: string[] = [];
   const required_edits: string[] = [];
   let final_action: FinalDecisionResult["final_action"];
   let decision_reason: string;
 
-  if (policy < t.reject_policy_below || input.final_policy_level === "critical") {
+  if (policy < t.reject_policy_below || policyCritical) {
     final_action = "REJECT_POLICY_RISK";
     decision_reason =
       "Điểm an toàn chính sách quá thấp hoặc mức rủi ро chính sách ở mức critical.";
     if (policy < t.reject_policy_below)
       blocking_reasons.push(`policy_safety_score=${policy} < ${t.reject_policy_below}`);
-    if (input.final_policy_level === "critical")
-      blocking_reasons.push("final_policy_level=critical");
-  } else if (
-    copyright < t.reject_copyright_below ||
-    input.ip_trademark_risk === "critical"
-  ) {
+    if (policyCritical) blocking_reasons.push("policy_risk=critical");
+  } else if (copyright < t.reject_copyright_below || copyrightCritical) {
     final_action = "REJECT_COPYRIGHT_RISK";
     decision_reason =
       "Điểm an toàn bản quyền quá thấp hoặc rủi ro IP/thương hiệu ở mức critical.";
@@ -87,8 +90,7 @@ export function decideFinalAction(
       blocking_reasons.push(
         `copyright_safety_score=${copyright} < ${t.reject_copyright_below}`,
       );
-    if (input.ip_trademark_risk === "critical")
-      blocking_reasons.push("ip_trademark_risk=critical");
+    if (copyrightCritical) blocking_reasons.push("copyright_risk=critical");
   } else if (
     policy < t.need_edit_policy_below ||
     input.final_policy_level === "high"

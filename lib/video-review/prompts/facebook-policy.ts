@@ -1,4 +1,5 @@
 /** Prompt chấm rủi ro chính sách quảng cáo Facebook/Meta (strict JSON). */
+import type { PolicyRiskGroup } from "@/lib/video-review/policy-groups-config";
 
 export type PolicyPromptInput = {
   productCategory: string | null;
@@ -11,7 +12,17 @@ export type PolicyPromptInput = {
   hasVideoFile: boolean;
 };
 
-export const FACEBOOK_POLICY_SYSTEM_PROMPT = `Bạn là reviewer RỦI RO quảng cáo Facebook/Meta cho video affiliate Shopee tại Việt Nam.
+/**
+ * System prompt — danh sách nhóm rủi ro render ĐỘNG từ cấu hình admin
+ * (lib/video-review/policy-groups-config.ts). Phần nguyên tắc giữ nguyên.
+ */
+export function buildFacebookPolicySystemPrompt(
+  groups: PolicyRiskGroup[],
+): string {
+  const groupLines = groups
+    .map((g) => `- ${g.key}: ${g.description_vi || g.label_vi}`)
+    .join("\n");
+  return `Bạn là reviewer RỦI RO quảng cáo Facebook/Meta cho video affiliate Shopee tại Việt Nam.
 
 NGUYÊN TẮC BẮT BUỘC:
 - Bạn KHÔNG phải Meta và KHÔNG được kết luận chắc chắn video sẽ bị từ chối hay được duyệt.
@@ -20,14 +31,7 @@ NGUYÊN TẮC BẮT BUỘC:
 - Nếu dữ liệu đầu vào ít (chỉ có link ngoài, không có file video/transcript/OCR), hãy đặt "confidence" = "low" hoặc "medium" và KHÔNG khẳng định mạnh.
 
 Bạn phân tích các nhóm rủi ro sau (mỗi nhóm cho mức low|medium|high|critical):
-- misleading_claim_risk: tuyên bố sai/gây hiểu lầm, hứa hẹn quá đà
-- health_claim_risk: tuyên bố sức khỏe/giảm cân/chữa bệnh/cơ thể
-- personal_attribute_risk: nhắm thuộc tính cá nhân (giới tính, tôn giáo, sức khỏe...)
-- before_after_risk: hình ảnh trước/sau
-- shocking_content_risk: nội dung gây sốc/giật gân
-- adult_sensitive_risk: nội dung người lớn/nhạy cảm
-- ip_trademark_risk: bản quyền/thương hiệu/logo/người nổi tiếng/nhạc bản quyền
-- restricted_product_risk: sản phẩm bị hạn chế
+${groupLines}
 
 Chấm 2 điểm an toàn 0-100 (cao = an toàn):
 - policy_safety_score: càng nhiều claim quá đà / before-after / sức khỏe / gây sốc thì càng THẤP.
@@ -36,8 +40,27 @@ Chấm 2 điểm an toàn 0-100 (cao = an toàn):
 final_policy_level = mức rủi ro tổng hợp cao nhất đáng lưu ý.
 
 CHỈ trả về JSON đúng schema, không thêm chữ nào ngoài JSON.`;
+}
 
-export function buildFacebookPolicyUserPrompt(input: PolicyPromptInput): string {
+export function buildFacebookPolicyUserPrompt(
+  input: PolicyPromptInput,
+  groups: PolicyRiskGroup[],
+): string {
+  // Schema ví dụ: các khóa nhóm rủi ro sinh động + các field cố định.
+  const riskSchema = Object.fromEntries(
+    groups.map((g) => [g.key, "low|medium|high|critical"]),
+  );
+  const schema = {
+    policy_safety_score: 0,
+    copyright_safety_score: 0,
+    ...riskSchema,
+    risk_reasons: ["..."],
+    policy_references: ["..."],
+    suggested_fixes: ["..."],
+    final_policy_level: "low|medium|high|critical",
+    confidence: "low|medium|high",
+  };
+
   const lines = [
     `Danh mục sản phẩm: ${input.productCategory ?? "(không rõ)"}`,
     `Link sản phẩm Shopee: ${input.shopeeProductUrl}`,
@@ -60,27 +83,7 @@ export function buildFacebookPolicyUserPrompt(input: PolicyPromptInput): string 
     `Ghi chú metadata: ${input.metadataNote}`,
     "",
     "Trả về JSON strict đúng schema sau:",
-    JSON.stringify(
-      {
-        policy_safety_score: 0,
-        copyright_safety_score: 0,
-        misleading_claim_risk: "low|medium|high|critical",
-        health_claim_risk: "low|medium|high|critical",
-        personal_attribute_risk: "low|medium|high|critical",
-        before_after_risk: "low|medium|high|critical",
-        shocking_content_risk: "low|medium|high|critical",
-        adult_sensitive_risk: "low|medium|high|critical",
-        ip_trademark_risk: "low|medium|high|critical",
-        restricted_product_risk: "low|medium|high|critical",
-        risk_reasons: ["..."],
-        policy_references: ["..."],
-        suggested_fixes: ["..."],
-        final_policy_level: "low|medium|high|critical",
-        confidence: "low|medium|high",
-      },
-      null,
-      2,
-    ),
+    JSON.stringify(schema, null, 2),
   ];
   return lines.join("\n");
 }

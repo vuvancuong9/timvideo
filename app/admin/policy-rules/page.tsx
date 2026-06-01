@@ -2,30 +2,37 @@ import { requireRole } from "@/lib/auth/session";
 import { Card, PageHeader } from "@/components/ui";
 import { FINAL_ACTION_RULES } from "@/lib/video-review/policy-rules";
 import { getThresholds } from "@/lib/video-review/policy-config";
+import { getRiskGroups } from "@/lib/video-review/policy-groups-config";
+import { getConfidenceRule } from "@/lib/video-review/confidence-config";
 import { PolicyRulesClient } from "@/components/admin/PolicyRulesClient";
+import { RiskGroupsEditor } from "@/components/admin/RiskGroupsEditor";
+import { ConfidenceRuleEditor } from "@/components/admin/ConfidenceRuleEditor";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPolicyRulesPage() {
   await requireRole(["admin"]);
-  const thresholds = await getThresholds();
-
-  // Các nhóm mô tả tĩnh (nhóm rủi ro, confidence) — giữ read-only, bỏ nhóm
-  // "Thứ tự quyết định" vì giờ đã có form ngưỡng sửa được ở trên.
-  const staticGroups = FINAL_ACTION_RULES.filter(
-    (g) => !g.title.startsWith("Thứ tự quyết định"),
-  );
+  const [thresholds, riskGroups, confidenceRule] = await Promise.all([
+    getThresholds(),
+    getRiskGroups(),
+    getConfidenceRule(),
+  ]);
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Policy & quyết định"
-        description="Chỉnh ngưỡng + trọng số quyết định hành động cuối. Áp dụng cho các lần chấm tiếp theo."
+        description="Chỉnh ngưỡng + trọng số, nhóm rủi ro AI chấm và luật độ tin cậy. Áp dụng cho các lần chấm tiếp theo."
       />
 
       <PolicyRulesClient initial={thresholds} />
 
-      {staticGroups.map((group) => (
+      <RiskGroupsEditor initial={riskGroups} />
+
+      <ConfidenceRuleEditor initial={confidenceRule} />
+
+      {/* Thứ tự quyết định deterministic — chỉ đọc (không sửa được). */}
+      {FINAL_ACTION_RULES.map((group) => (
         <Card key={group.title}>
           <h2 className="mb-2 font-semibold text-gray-900">{group.title}</h2>
           <ul className="list-inside list-disc space-y-1 text-sm text-gray-700">

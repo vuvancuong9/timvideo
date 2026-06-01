@@ -9,12 +9,15 @@ import {
   type ContentAnalysisPromptInput,
 } from "@/lib/video-review/prompts/content-analysis";
 import {
-  capConfidenceWhenNoFile,
   coerceConfidence,
   coerceStringArray,
   extractJson,
   withRetry,
 } from "@/lib/video-review/ai-util";
+import {
+  capConfidence,
+  getConfidenceRule,
+} from "@/lib/video-review/confidence-config";
 import type { ContentAnalysisResult } from "@/types/videoReview";
 
 export type GeminiAnalyzeOutput = {
@@ -36,6 +39,7 @@ export async function analyzeContentWithGemini(
     throw new Error("Thiếu GEMINI_API_KEY để phân tích nội dung video");
   }
 
+  const rule = await getConfidenceRule();
   const userPrompt = buildContentAnalysisUserPrompt(input);
   const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
     model,
@@ -94,9 +98,10 @@ export async function analyzeContentWithGemini(
     strong_scenes: coerceStringArray(parsed.strong_scenes),
     weak_scenes: coerceStringArray(parsed.weak_scenes),
     remake_angles: coerceStringArray(parsed.remake_angles),
-    confidence: capConfidenceWhenNoFile(
+    confidence: capConfidence(
       coerceConfidence(parsed.confidence),
       input.hasVideoFile,
+      rule,
     ),
   };
 

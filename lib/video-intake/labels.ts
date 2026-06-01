@@ -105,6 +105,26 @@ export const POLICY_RISK_LABELS = {
   restricted_product_risk: "Sản phẩm bị hạn chế quảng cáo",
 } as const;
 
+/**
+ * Đọc mức rủi ro của 1 nhóm: ưu tiên risk_scores (map động), fallback cột legacy
+ * (row cũ trước migration 069), cuối cùng "low". Client-safe (không import server).
+ */
+export function readRiskLevel(
+  riskScores: unknown,
+  legacyRow: Record<string, unknown> | null | undefined,
+  key: string,
+): RiskLevel {
+  const fromScores =
+    riskScores && typeof riskScores === "object"
+      ? (riskScores as Record<string, unknown>)[key]
+      : undefined;
+  const raw = fromScores ?? legacyRow?.[key];
+  const s = String(raw ?? "").toLowerCase();
+  return s === "low" || s === "medium" || s === "high" || s === "critical"
+    ? (s as RiskLevel)
+    : "low";
+}
+
 /** Nhãn điểm số dễ hiểu. */
 export const SCORE_LABELS = {
   creative: "Điểm bán hàng",

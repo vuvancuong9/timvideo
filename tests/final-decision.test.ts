@@ -131,3 +131,51 @@ describe("APPROVE_RUN_ADS & NEED_EDIT & REMAKE_SAFE", () => {
     expect(r.final_score).toBe(80);
   });
 });
+
+describe("critical-block booleans (nhóm rủi ro động)", () => {
+  it("copyright_critical_block=true -> REJECT_COPYRIGHT_RISK dù điểm cao", () => {
+    const r = decideFinalAction({
+      creative_score: 90,
+      policy_safety_score: 90,
+      copyright_safety_score: 90,
+      final_policy_level: "low",
+      copyright_critical_block: true,
+    });
+    expect(r.final_action).toBe("REJECT_COPYRIGHT_RISK");
+  });
+
+  it("policy_critical_block=true -> REJECT_POLICY_RISK dù final_policy_level thấp", () => {
+    const r = decideFinalAction({
+      creative_score: 90,
+      policy_safety_score: 90,
+      copyright_safety_score: 90,
+      final_policy_level: "low",
+      policy_critical_block: true,
+    });
+    expect(r.final_action).toBe("REJECT_POLICY_RISK");
+  });
+
+  it("boolean=false GHI ĐÈ alias ip_trademark_risk critical (production thắng)", () => {
+    const r = decideFinalAction({
+      creative_score: 90,
+      policy_safety_score: 90,
+      copyright_safety_score: 90,
+      final_policy_level: "low",
+      ip_trademark_risk: "critical",
+      copyright_critical_block: false,
+    });
+    expect(r.final_action).toBe("APPROVE_RUN_ADS");
+  });
+
+  it("cả 2 boolean=false + level thấp -> quyết định bình thường (APPROVE)", () => {
+    const r = decideFinalAction({
+      creative_score: 85,
+      policy_safety_score: 85,
+      copyright_safety_score: 80,
+      final_policy_level: "low",
+      policy_critical_block: false,
+      copyright_critical_block: false,
+    });
+    expect(r.final_action).toBe("APPROVE_RUN_ADS");
+  });
+});

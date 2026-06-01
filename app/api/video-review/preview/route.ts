@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApi } from "@/lib/auth/session";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { scoreVideoPreview } from "@/lib/video-review/score-preview";
+import { getRiskGroups } from "@/lib/video-review/policy-groups-config";
 import { writeAuditLog } from "@/lib/audit";
 import { ApiError, handleApiError, jsonOk, readJson } from "@/lib/http";
 
@@ -75,7 +76,9 @@ export async function POST(req: NextRequest) {
       after: { final_action: preview.decision.final_action },
     });
 
-    return jsonOk({ preview });
+    // Kèm danh sách nhóm rủi ro (cấu hình động) để panel preview render nhãn/đúng thứ tự.
+    const riskGroups = await getRiskGroups();
+    return jsonOk({ preview, riskGroups });
   } catch (e) {
     return handleApiError(e);
   }

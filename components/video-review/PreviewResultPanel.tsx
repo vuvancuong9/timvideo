@@ -2,13 +2,14 @@ import { Badge, Card } from "@/components/ui";
 import {
   RISK_LABELS,
   RISK_COLORS,
-  POLICY_RISK_LABELS,
+  readRiskLevel,
   SCORE_LABELS,
   FINAL_ACTION_VERDICT,
   VERDICT_BG,
   CONFIDENCE_HINT,
   scoreWord,
 } from "@/lib/video-intake/labels";
+import type { PolicyRiskGroup } from "@/lib/video-review/policy-groups-config";
 import type {
   ContentAnalysisResult,
   PolicyCheckResult,
@@ -80,7 +81,13 @@ function ListBlock({
   );
 }
 
-export function PreviewResultPanel({ data }: { data: PreviewData }) {
+export function PreviewResultPanel({
+  data,
+  riskGroups,
+}: {
+  data: PreviewData;
+  riskGroups: PolicyRiskGroup[];
+}) {
   const { analysis, policy, creative, decision } = data;
   const verdict = FINAL_ACTION_VERDICT[decision.final_action];
 
@@ -122,42 +129,13 @@ export function PreviewResultPanel({ data }: { data: PreviewData }) {
           hoặc bỏ.
         </p>
         <div className="grid gap-x-8 md:grid-cols-2">
-          <div>
+          {riskGroups.map((g) => (
             <RiskRow
-              label={POLICY_RISK_LABELS.misleading_claim_risk}
-              level={policy.misleading_claim_risk}
+              key={g.key}
+              label={g.label_vi}
+              level={readRiskLevel(policy.risk_scores, null, g.key)}
             />
-            <RiskRow
-              label={POLICY_RISK_LABELS.health_claim_risk}
-              level={policy.health_claim_risk}
-            />
-            <RiskRow
-              label={POLICY_RISK_LABELS.personal_attribute_risk}
-              level={policy.personal_attribute_risk}
-            />
-            <RiskRow
-              label={POLICY_RISK_LABELS.before_after_risk}
-              level={policy.before_after_risk}
-            />
-          </div>
-          <div>
-            <RiskRow
-              label={POLICY_RISK_LABELS.shocking_content_risk}
-              level={policy.shocking_content_risk}
-            />
-            <RiskRow
-              label={POLICY_RISK_LABELS.adult_sensitive_risk}
-              level={policy.adult_sensitive_risk}
-            />
-            <RiskRow
-              label={POLICY_RISK_LABELS.ip_trademark_risk}
-              level={policy.ip_trademark_risk}
-            />
-            <RiskRow
-              label={POLICY_RISK_LABELS.restricted_product_risk}
-              level={policy.restricted_product_risk}
-            />
-          </div>
+          ))}
         </div>
         <ListBlock
           title="Vì sao có rủi ro"
