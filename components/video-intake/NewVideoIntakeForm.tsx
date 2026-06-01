@@ -81,6 +81,22 @@ export function NewVideoIntakeForm({
 
   // Cache file -> đã upload, để chấm thử rồi gửi không upload lại.
   const uploadCache = useRef<Map<File, UploadedFile>>(new Map());
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /** Xóa 1 file đã chọn (video/ảnh): bỏ cache upload + buộc chấm điểm lại. */
+  function removeFile(i: number) {
+    invalidatePreview();
+    setFiles((prev) => {
+      const target = prev[i];
+      if (target) uploadCache.current.delete(target);
+      const next = prev.filter((_, idx) => idx !== i);
+      // Hết file -> reset input để chọn lại đúng file đó vẫn nhận, và bỏ tên cũ.
+      if (next.length === 0 && fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+      return next;
+    });
+  }
 
   // Lấy Sub ID dự kiến cho nhân viên hiện tại (ngày + account + STT).
   useEffect(() => {
@@ -538,6 +554,7 @@ export function NewVideoIntakeForm({
 
         <Field label="Tải lên video và/hoặc ảnh (chọn nhiều file được)">
           <input
+            ref={fileInputRef}
             type="file"
             accept="video/*,image/*"
             multiple
@@ -561,12 +578,37 @@ export function NewVideoIntakeForm({
                     {isImageFile(f) ? "ẢNH" : "VIDEO"}
                   </span>
                   <span className="truncate">{f.name}</span>
-                  <span className="text-gray-400">
+                  <span className="shrink-0 text-gray-400">
                     ({(f.size / 1024 / 1024).toFixed(1)} MB)
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(i)}
+                    disabled={busy}
+                    className="ml-auto shrink-0 rounded px-1.5 py-0.5 font-medium text-red-600 hover:bg-red-50 disabled:opacity-40"
+                    aria-label={`Xóa ${f.name}`}
+                    title="Xóa file này, chọn file khác"
+                  >
+                    ✕ Xóa
+                  </button>
                 </li>
               ))}
             </ul>
+          )}
+          {files.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                invalidatePreview();
+                for (const f of files) uploadCache.current.delete(f);
+                setFiles([]);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+              }}
+              disabled={busy}
+              className="mt-2 text-xs font-medium text-red-600 hover:underline disabled:opacity-40"
+            >
+              Xóa tất cả & chọn lại
+            </button>
           )}
           {imageCount > 0 && (
             <p className="mt-1 text-xs text-purple-600">
