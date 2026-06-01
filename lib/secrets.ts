@@ -66,7 +66,23 @@ export async function getOpenAIConfig() {
 export async function getGeminiConfig() {
   return {
     apiKey: await getSetting("GEMINI_API_KEY"),
-    model: (await getSetting("GEMINI_MODEL")) ?? "gemini-2.5-flash",
+    model: (await getSetting("GEMINI_MODEL")) ?? "gemini-3.5-flash",
+  };
+}
+
+/**
+ * Cấu hình second-pass (chấm lại video rủi ro / độ tin thấp bằng model mạnh hơn).
+ * mode: off = tắt | auto = chỉ khi confidence chưa cao | always = mọi video có file.
+ */
+export async function getGeminiReviewConfig() {
+  const mode = (await getSetting("GEMINI_REVIEW_MODE")) ?? "off";
+  return {
+    apiKey: await getSetting("GEMINI_API_KEY"),
+    model: (await getSetting("GEMINI_REVIEW_MODEL")) ?? "gemini-3.1-pro-preview",
+    mode: (mode === "auto" || mode === "always" ? mode : "off") as
+      | "off"
+      | "auto"
+      | "always",
   };
 }
 

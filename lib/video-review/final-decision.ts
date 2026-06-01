@@ -70,6 +70,12 @@ export function decideFinalAction(
   const copyrightCritical =
     input.copyright_critical_block ?? input.ip_trademark_risk === "critical";
 
+  // Bằng chứng yếu = chưa đọc được VIDEO THẬT (chỉ link/ảnh) → KHÔNG được tự duyệt
+  // chạy ads. undefined ⇒ bỏ qua gate (giữ hành vi/test cũ).
+  const weakEvidence =
+    input.evidence_level === "text_only" ||
+    input.evidence_level === "images_only";
+
   const blocking_reasons: string[] = [];
   const required_edits: string[] = [];
   let final_action: FinalDecisionResult["final_action"];
@@ -104,9 +110,20 @@ export function decideFinalAction(
     policy >= t.approve_policy_min &&
     copyright >= t.approve_copyright_min
   ) {
-    final_action = "APPROVE_RUN_ADS";
-    decision_reason =
-      "Điểm sáng tạo và an toàn đều cao — đề xuất chạy ads (vẫn cần người duyệt cuối).";
+    if (weakEvidence) {
+      // Điểm cao nhưng chấm trên link/ảnh, chưa xem video thật → không tự duyệt.
+      final_action = "NEED_EDIT";
+      decision_reason =
+        "Chưa đọc được nội dung video thật (chỉ có link/ảnh) — cần upload video để xác minh trước khi chạy ads.";
+      required_edits.push(
+        "Upload đúng file video để hệ thống phân tích nội dung thật rồi chấm lại.",
+      );
+      blocking_reasons.push(`evidence_level=${input.evidence_level}`);
+    } else {
+      final_action = "APPROVE_RUN_ADS";
+      decision_reason =
+        "Điểm sáng tạo và an toàn đều cao — đề xuất chạy ads (vẫn cần người duyệt cuối).";
+    }
   } else if (creative >= t.remake_creative_min) {
     final_action = "REMAKE_SAFE";
     decision_reason =

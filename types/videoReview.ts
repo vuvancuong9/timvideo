@@ -20,6 +20,12 @@ export type VideoFinalDecisionRow = Tables<"video_final_decisions">;
 export const RISK_LEVELS: RiskLevel[] = ["low", "medium", "high", "critical"];
 export const CONFIDENCES: AnalysisConfidence[] = ["low", "medium", "high"];
 
+/**
+ * Mức bằng chứng thực tế dùng để chấm. CODE quyết định (dựa trên part đã gửi
+ * Gemini), KHÔNG tin model tự khai. video > frames > images_only > text_only.
+ */
+export type EvidenceLevel = "video" | "frames" | "images_only" | "text_only";
+
 /** ----- Output schema của Gemini content analysis ----- */
 export type ContentAnalysisResult = {
   summary: string;
@@ -33,6 +39,12 @@ export type ContentAnalysisResult = {
   strong_scenes: string[];
   weak_scenes: string[];
   remake_angles: string[];
+  /** Gemini có thực sự "thấy" video không (đối chiếu với part code đã gửi). */
+  video_seen: boolean;
+  /** Mức bằng chứng đã được code chốt (sau khi đối chiếu model). */
+  evidence_level: EvidenceLevel;
+  /** Dấu hiệu rủi ro chính sách nhìn thấy trực tiếp trong video/ảnh. */
+  policy_visible_evidence: string[];
   confidence: AnalysisConfidence;
 };
 
@@ -79,6 +91,11 @@ export type FinalDecisionInput = {
   policy_critical_block?: boolean;
   /** Có nhóm category="copyright" + critical_blocks bị chấm "critical" → reject copyright. */
   copyright_critical_block?: boolean;
+  /**
+   * Mức bằng chứng thực tế. Nếu text_only/images_only → KHÔNG được tự
+   * APPROVE_RUN_ADS. undefined ⇒ bỏ qua gate (giữ hành vi/test cũ).
+   */
+  evidence_level?: EvidenceLevel;
 };
 
 export type FinalDecisionResult = {

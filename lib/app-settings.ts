@@ -20,6 +20,8 @@ export type SettingDef = {
   multiline?: boolean;
   placeholder?: string;
   help?: string;
+  /** Nếu có → render dropdown chọn 1 trong các giá trị (vd chế độ off/auto/always). */
+  options?: string[];
   /** Các bước hướng dẫn lấy giá trị. */
   guide?: string[];
   /** Link tới trang chính thức để lấy. */
@@ -74,11 +76,27 @@ export const MANAGED_SETTINGS: SettingDef[] = [
   },
   {
     key: "GEMINI_MODEL",
-    label: "Gemini Model",
+    label: "Gemini Model (chấm video)",
     group: "AI",
     isSecret: false,
-    placeholder: "gemini-2.5-flash",
-    help: "Để trống = dùng mặc định gemini-2.5-flash. Có thể đổi gemini-2.5-pro…",
+    placeholder: "gemini-3.5-flash",
+    help: "Để trống = mặc định gemini-3.5-flash (nhận VIDEO trực tiếp). Có thể đổi gemini-3.1-flash-lite…",
+  },
+  {
+    key: "GEMINI_REVIEW_MODE",
+    label: "Chế độ chấm lại video (second-pass)",
+    group: "AI",
+    isSecret: false,
+    options: ["off", "auto", "always"],
+    help: "off = tắt (chỉ chấm 1 lần bằng Gemini Model ở trên). auto = chấm lại bằng model pro khi độ tin chưa cao (chỉ khi CÓ video thật). always = chấm lại mọi video có file. Bật sẽ tốn thêm chi phí Gemini.",
+  },
+  {
+    key: "GEMINI_REVIEW_MODEL",
+    label: "Gemini Model chấm lại (pro)",
+    group: "AI",
+    isSecret: false,
+    placeholder: "gemini-3.1-pro-preview",
+    help: "Model mạnh dùng cho second-pass khi bật chế độ ở trên. Để trống = gemini-3.1-pro-preview.",
   },
   {
     key: "GOOGLE_DRIVE_CLIENT_EMAIL",
@@ -209,6 +227,7 @@ export type SettingStatus = {
   multiline: boolean;
   placeholder: string | null;
   help: string | null;
+  options: string[] | null;
   guide: string[];
   guideUrl: string | null;
   guideUrlLabel: string | null;
@@ -240,6 +259,7 @@ function toStatus(
     multiline: Boolean(def.multiline),
     placeholder: def.placeholder ?? null,
     help: def.help ?? null,
+    options: def.options ?? null,
     guide: def.guide ?? [],
     guideUrl: def.guideUrl ?? null,
     guideUrlLabel: def.guideUrlLabel ?? null,

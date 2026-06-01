@@ -13,13 +13,20 @@ export type ContentAnalysisPromptInput = {
   frameCount: number;
   imageCount: number;
   hasVideoFile: boolean;
+  /** Có gửi VIDEO THẬT vào Gemini lần này không (file/uri) — quyết định cách chấm. */
+  videoProvided: boolean;
 };
 
 export const CONTENT_ANALYSIS_SYSTEM_PROMPT = `Bạn là chuyên gia phân tích video sản phẩm để bán affiliate.
-Phân tích video dựa trên dữ liệu được cung cấp (thông tin sản phẩm, frames nếu có, transcript nếu có, OCR nếu có, ẢNH đính kèm nếu có).
-Một số ảnh đính kèm là ẢNH CHỤP SỐ LIỆU TƯƠNG TÁC (lượt like / view / comment / share). Hãy ĐỌC các con số trong ảnh, đánh giá độ hấp dẫn & "social proof" (video càng nhiều tương tác càng tiềm năng), và phản ánh vào nhận xét + điểm hook/độ tin cậy. Nếu thấy số liệu tương tác, ghi rõ vào "summary" (vd: "video gốc đạt ~120k view, 3k like").
-KHÔNG bịa transcript/OCR nếu không được cung cấp.
-Nếu dữ liệu ít (chỉ link ngoài, không có frame/transcript/ảnh) thì đặt "confidence" = "low" hoặc "medium".
+Phân tích dựa trên dữ liệu ĐƯỢC CUNG CẤP THẬT (video nếu có, ảnh đính kèm nếu có, thông tin sản phẩm, transcript/OCR nếu có).
+Một số ảnh đính kèm là ẢNH CHỤP SỐ LIỆU TƯƠNG TÁC (lượt like / view / comment / share). Hãy ĐỌC các con số trong ảnh, đánh giá "social proof" và phản ánh vào nhận xét + điểm hook/độ tin cậy. Nếu thấy số liệu, ghi rõ vào "summary".
+
+QUY TẮC BẰNG CHỨNG (BẮT BUỘC, chống bịa):
+- Nếu CÓ video thật được gửi kèm: hãy XEM video, mô tả đúng những gì thấy, liệt kê "key_moments" KÈM MỐC THỜI GIAN dạng mm:ss. Đặt "video_seen"=true, "evidence_level"="video".
+- Nếu KHÔNG có video thật (chỉ có link và/hoặc ảnh): TUYỆT ĐỐI KHÔNG mô tả cảnh quay như thể đã xem video. Đặt "video_seen"=false; "evidence_level"="images_only" nếu có ảnh, "text_only" nếu chỉ có link/chữ. Nói rõ trong "summary" rằng "chưa có video thật để phân tích, đây là đánh giá sơ bộ".
+- "policy_visible_evidence": liệt kê dấu hiệu rủi ro chính sách NHÌN THẤY trực tiếp (vd "hình ảnh trước/sau", "logo thương hiệu", "lời hứa giảm cân nhanh"). Nếu không thấy gì trực tiếp → mảng rỗng.
+KHÔNG bịa transcript/OCR/cảnh quay nếu không được cung cấp.
+Nếu dữ liệu ít thì đặt "confidence" = "low" hoặc "medium".
 CHỈ trả về JSON đúng schema, không thêm chữ nào ngoài JSON.`;
 
 export function buildContentAnalysisUserPrompt(
@@ -32,9 +39,10 @@ export function buildContentAnalysisUserPrompt(
     `Nguồn video: ${input.sourceType}`,
     `Link video: ${input.videoUrl ?? "(không có)"}`,
     `Drive: ${input.driveWebUrl ?? "(không có)"}`,
-    `Số frame trích xuất được: ${input.frameCount}`,
     `Số ảnh đính kèm (ảnh số liệu tương tác / ảnh sản phẩm) — xem trong phần ảnh kèm theo: ${input.imageCount}`,
-    `Có file video: ${input.hasVideoFile ? "CÓ" : "KHÔNG (confidence thấp hơn)"}`,
+    input.videoProvided
+      ? "VIDEO THẬT đã được đính kèm trong request — hãy XEM và phân tích trực tiếp, key_moments kèm mm:ss."
+      : "KHÔNG có video thật trong request (chỉ link/ảnh) — đánh giá sơ bộ, KHÔNG mô tả cảnh như đã xem.",
     "",
     `Transcript: ${input.transcript ?? "(không có)"}`,
     `OCR: ${input.ocrText ?? "(không có)"}`,
@@ -49,10 +57,13 @@ export function buildContentAnalysisUserPrompt(
         claims_detected: ["..."],
         pain_points: ["..."],
         audience_profile: {},
-        key_moments: ["..."],
+        key_moments: ["mm:ss - mô tả"],
         strong_scenes: ["..."],
         weak_scenes: ["..."],
         remake_angles: ["..."],
+        video_seen: input.videoProvided,
+        evidence_level: input.videoProvided ? "video" : "images_only|text_only",
+        policy_visible_evidence: ["..."],
         confidence: "low|medium|high",
       },
       null,

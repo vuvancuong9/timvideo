@@ -23,6 +23,8 @@ import {
 } from "@/lib/video-review/final-decision";
 import { getThresholds } from "@/lib/video-review/policy-config";
 import { getEnabledRiskGroups } from "@/lib/video-review/policy-groups-config";
+import { getGeminiConfig, getGeminiReviewConfig } from "@/lib/secrets";
+import { resolveVideoInput } from "@/lib/video-review/gemini-video-input";
 import { getDriveFileInfo } from "@/lib/video-intake/drive";
 import {
   loadImagePartsFromAttachments,
@@ -78,6 +80,7 @@ async function getCategoryName(
 async function processClaimedJob(
   db: Db,
   job: JobRow,
+  deadlineAt: number,
 ): Promise<{ finalAction: string }> {
   // STAGE 1: INGEST
   await setStage(db, job.id, "ingest");
@@ -100,14 +103,32 @@ async function processClaimedJob(
     submission.drive_file_id || submission.drive_web_url,
   );
 
-  // STAGE 2: EXTRACT (MVP: chỉ metadata Drive, KHÔNG fake transcript/OCR)
+  // STAGE 2: EXTRACT — chuẩn bị VIDEO THẬT cho Gemini (inline/Files API/YouTube).
   await setStage(db, job.id, "extract");
+  // Ảnh đính kèm (vd ảnh chụp like/view/comment) -> đưa vào Gemini.
+  const attachments = parseAttachments(submission.attachments);
+  const imageParts = await loadImagePartsFromAttachments(attachments);
+  const { apiKey: geminiKey } = await getGeminiConfig();
+  const video = await resolveVideoInput({
+    sourceType: submission.source_type,
+    originalVideoUrl: submission.original_video_url,
+    driveWebUrl: submission.drive_web_url,
+    attachments,
+    apiKey: geminiKey ?? "",
+    deadlineAt,
+    allowFilesApi: true,
+    inlineDisallowed: imageParts.length > 0,
+  });
   const rawMetadata: Record<string, unknown> = {
     source_type: submission.source_type,
     has_video_file: hasVideoFile,
-    extract_note:
-      "MVP: chua cat frame/audio/transcript/OCR. File luu o Supabase Storage; anh dinh kem duoc dua vao Gemini.",
+    video_source: video.source,
+    video_sent: video.videoSeenSent,
+    extract_note: video.videoSeenSent
+      ? "Video gui thang vao Gemini de phan tich (khong cat frame)."
+      : "Khong gui duoc video that vao Gemini — cham so bo.",
   };
+  if (video.warning) rawMetadata.video_warning = video.warning;
   const durationSeconds: number | null = null;
   if (hasVideoFile && submission.drive_file_id) {
     try {
@@ -117,7 +138,7 @@ async function processClaimedJob(
       rawMetadata.drive_error = String(err);
     }
   }
-  // transcript/ocr = null (không bịa). frame_urls = [] (chưa extract).
+  // transcript/ocr = null (không bịa). frame_urls = [] (chưa cắt frame).
   await db.from("video_extracted_assets").insert({
     video_submission_id: submission.id,
     transcript_text: null,
@@ -131,29 +152,48 @@ async function processClaimedJob(
   const transcript: string | null = null;
   const ocrText: string | null = null;
 
-  // Ảnh đính kèm (vd ảnh chụp like/view/comment) -> đưa vào Gemini.
-  const attachments = parseAttachments(submission.attachments);
-  const imageParts = await loadImagePartsFromAttachments(attachments);
-
-  // STAGE 3: ANALYZE (Gemini)
+  // STAGE 3: ANALYZE (Gemini) — gửi VIDEO THẬT nếu có.
   await setStage(db, job.id, "analyze");
-  const analysis = await analyzeContentWithGemini(
-    {
-      productCategory: categoryName,
-      shopeeProductUrl: submission.shopee_product_url,
-      productPrice: Number(submission.product_price),
-      commissionPercent: Number(submission.commission_percent),
-      sourceType: submission.source_type,
-      videoUrl: submission.original_video_url,
-      driveWebUrl: submission.drive_web_url,
-      transcript,
-      ocrText,
-      frameCount: 0,
-      imageCount: imageParts.length,
-      hasVideoFile,
-    },
+  const analyzeInput = {
+    productCategory: categoryName,
+    shopeeProductUrl: submission.shopee_product_url,
+    productPrice: Number(submission.product_price),
+    commissionPercent: Number(submission.commission_percent),
+    sourceType: submission.source_type,
+    videoUrl: submission.original_video_url,
+    driveWebUrl: submission.drive_web_url,
+    transcript,
+    ocrText,
+    frameCount: 0,
+    imageCount: imageParts.length,
+    hasVideoFile,
+    videoProvided: video.videoSeenSent,
+  };
+  let analysis = await analyzeContentWithGemini(analyzeInput, {
+    videoPart: video.part,
     imageParts,
-  );
+  });
+
+  // SECOND-PASS (tùy chọn admin): chấm lại bằng model mạnh hơn cho video
+  // rủi ro / độ tin chưa cao. Reuse cùng video part (không upload lại).
+  const reviewCfg = await getGeminiReviewConfig();
+  const wantReview =
+    reviewCfg.mode !== "off" &&
+    analysis.result.evidence_level === "video" &&
+    (reviewCfg.mode === "always" || analysis.result.confidence !== "high") &&
+    Date.now() < deadlineAt - 25_000;
+  if (wantReview) {
+    try {
+      analysis = await analyzeContentWithGemini(analyzeInput, {
+        videoPart: video.part,
+        imageParts,
+        modelOverride: reviewCfg.model,
+      });
+    } catch {
+      // second-pass lỗi → giữ kết quả first-pass (đã có).
+    }
+  }
+
   await db.from("video_content_analysis").insert({
     video_submission_id: submission.id,
     provider: "gemini",
@@ -171,19 +211,28 @@ async function processClaimedJob(
     strong_scenes: analysis.result.strong_scenes,
     weak_scenes: analysis.result.weak_scenes,
     remake_angles: analysis.result.remake_angles,
-    raw_response:
-      analysis.raw as Database["public"]["Tables"]["video_content_analysis"]["Insert"]["raw_response"],
+    // evidence_level/video_seen lưu trong raw_response (chưa có cột riêng).
+    raw_response: {
+      evidence_level: analysis.result.evidence_level,
+      video_seen: analysis.result.video_seen,
+      policy_visible_evidence: analysis.result.policy_visible_evidence,
+      gemini: analysis.raw,
+    } as Database["public"]["Tables"]["video_content_analysis"]["Insert"]["raw_response"],
   });
   await writeAuditLog({
     actorId: null,
     action: "review.analysis_completed",
     entityType: "video_submission",
     entityId: submission.id,
-    after: { confidence: analysis.result.confidence },
+    after: {
+      confidence: analysis.result.confidence,
+      evidence_level: analysis.result.evidence_level,
+    },
   });
 
-  // STAGE 4: POLICY CHECK (OpenAI)
+  // STAGE 4: POLICY CHECK (OpenAI) — cap confidence theo VIDEO THẬT đã xem.
   await setStage(db, job.id, "policy_check");
+  const videoSeen = analysis.result.evidence_level === "video";
   const policy = await checkPolicyWithOpenAI({
     productCategory: categoryName,
     shopeeProductUrl: submission.shopee_product_url,
@@ -191,10 +240,10 @@ async function processClaimedJob(
     transcript,
     ocrText,
     claimsDetected: analysis.result.claims_detected,
-    metadataNote: hasVideoFile
-      ? "Có file video upload Drive."
-      : "Chỉ có link ngoài, không có file video.",
-    hasVideoFile,
+    metadataNote: videoSeen
+      ? "Đã phân tích video thật."
+      : "Chưa có video thật (chỉ link/ảnh) — đánh giá sơ bộ.",
+    hasVideoFile: videoSeen,
   });
   const rs = policy.result.risk_scores;
   await db.from("facebook_policy_checks").insert({
@@ -244,7 +293,7 @@ async function processClaimedJob(
     hook3s: analysis.result.hook_3s,
     visualSummary: analysis.result.visual_summary,
     transcript,
-    hasVideoFile,
+    hasVideoFile: videoSeen,
   });
   const creativeScore = computeCreativeScore(creative.result);
   await db.from("video_creative_scores").insert({
@@ -287,6 +336,7 @@ async function processClaimedJob(
       final_policy_level: policy.result.final_policy_level,
       policy_critical_block: policyCriticalBlock,
       copyright_critical_block: copyrightCriticalBlock,
+      evidence_level: analysis.result.evidence_level,
     },
     thresholds,
   );
@@ -395,7 +445,7 @@ export async function runVideoReviewWorkerOnce(opts?: {
     const job = claimed as unknown as JobRow;
 
     try {
-      const { finalAction } = await processClaimedJob(db, job);
+      const { finalAction } = await processClaimedJob(db, job, startedAt + deadlineMs);
       results.push({
         jobId: job.id,
         submissionId: job.video_submission_id,

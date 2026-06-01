@@ -12,6 +12,7 @@ type SettingStatus = {
   multiline: boolean;
   placeholder: string | null;
   help: string | null;
+  options: string[] | null;
   guide: string[];
   guideUrl: string | null;
   guideUrlLabel: string | null;
@@ -182,7 +183,19 @@ export function IntegrationSettingsClient({
                       </span>
                     )}
                   </div>
-                  {m.multiline ? (
+                  {m.options ? (
+                    <select
+                      value={values[m.key] ?? m.preview ?? m.options[0]}
+                      onChange={(e) => setVal(m.key, e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand"
+                    >
+                      {m.options.map((opt) => (
+                        <option key={opt} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  ) : m.multiline ? (
                     <textarea
                       value={values[m.key] ?? ""}
                       onChange={(e) => setVal(m.key, e.target.value)}

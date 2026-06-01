@@ -15,6 +15,8 @@ import {
 } from "@/lib/video-review/final-decision";
 import { getThresholds } from "@/lib/video-review/policy-config";
 import { getEnabledRiskGroups } from "@/lib/video-review/policy-groups-config";
+import { resolveVideoInput } from "@/lib/video-review/gemini-video-input";
+import { getGeminiConfig } from "@/lib/secrets";
 import { loadImagePartsFromAttachments } from "@/lib/video-review/images";
 import type {
   ContentAnalysisResult,
@@ -49,7 +51,21 @@ export async function scoreVideoPreview(
   // Nạp ảnh đính kèm (vd ảnh chụp like/view/comment) để Gemini đọc số liệu.
   const imageParts = await loadImagePartsFromAttachments(input.attachments);
 
-  // STAGE: ANALYZE (Gemini) — KHÔNG bịa transcript/OCR (preview chưa extract).
+  // Preview đồng bộ (ngân sách ~45s): chỉ YouTube + inline; video lớn → bỏ qua
+  // (bản đầy đủ sẽ phân tích video ở worker nền). KHÔNG dùng Files API ở đây.
+  const { apiKey: geminiKey } = await getGeminiConfig();
+  const video = await resolveVideoInput({
+    sourceType: input.sourceType,
+    originalVideoUrl: input.videoUrl,
+    driveWebUrl: input.driveWebUrl,
+    attachments: input.attachments ?? [],
+    apiKey: geminiKey ?? "",
+    deadlineAt: Date.now() + 45_000,
+    allowFilesApi: false,
+    inlineDisallowed: imageParts.length > 0,
+  });
+
+  // STAGE: ANALYZE (Gemini) — gửi video thật nếu có; KHÔNG bịa transcript/OCR.
   const analysis = await analyzeContentWithGemini(
     {
       productCategory: input.categoryName,
@@ -64,9 +80,11 @@ export async function scoreVideoPreview(
       frameCount: 0,
       imageCount: imageParts.length,
       hasVideoFile: input.hasVideoFile,
+      videoProvided: video.videoSeenSent,
     },
-    imageParts,
+    { videoPart: video.part, imageParts },
   );
+  const videoSeen = analysis.result.evidence_level === "video";
 
   // STAGE: POLICY (OpenAI)
   const policy = await checkPolicyWithOpenAI({
@@ -76,10 +94,10 @@ export async function scoreVideoPreview(
     transcript: null,
     ocrText: null,
     claimsDetected: analysis.result.claims_detected,
-    metadataNote: input.hasVideoFile
-      ? "Có file video upload Drive."
-      : "Chỉ có link ngoài, không có file video.",
-    hasVideoFile: input.hasVideoFile,
+    metadataNote: videoSeen
+      ? "Đã phân tích video thật."
+      : "Chưa có video thật (chỉ link/ảnh) — đánh giá sơ bộ.",
+    hasVideoFile: videoSeen,
   });
 
   // STAGE: CREATIVE (OpenAI) — điểm tổng do code tự tính.
@@ -92,7 +110,7 @@ export async function scoreVideoPreview(
     hook3s: analysis.result.hook_3s,
     visualSummary: analysis.result.visual_summary,
     transcript: null,
-    hasVideoFile: input.hasVideoFile,
+    hasVideoFile: videoSeen,
   });
   const creativeScore = computeCreativeScore(creative.result);
 
@@ -115,6 +133,7 @@ export async function scoreVideoPreview(
       final_policy_level: policy.result.final_policy_level,
       policy_critical_block: policyCriticalBlock,
       copyright_critical_block: copyrightCriticalBlock,
+      evidence_level: analysis.result.evidence_level,
     },
     thresholds,
   );

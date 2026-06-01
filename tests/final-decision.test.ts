@@ -179,3 +179,28 @@ describe("critical-block booleans (nhóm rủi ro động)", () => {
     expect(r.final_action).toBe("APPROVE_RUN_ADS");
   });
 });
+
+describe("evidence gate (chống chấm chay khi chưa xem video thật)", () => {
+  const highScores = {
+    creative_score: 90,
+    policy_safety_score: 90,
+    copyright_safety_score: 90,
+    final_policy_level: "low" as const,
+  };
+  it("evidence_level=text_only + điểm cao -> NEED_EDIT (KHÔNG tự APPROVE)", () => {
+    const r = decideFinalAction({ ...highScores, evidence_level: "text_only" });
+    expect(r.final_action).toBe("NEED_EDIT");
+  });
+  it("evidence_level=images_only + điểm cao -> NEED_EDIT", () => {
+    const r = decideFinalAction({ ...highScores, evidence_level: "images_only" });
+    expect(r.final_action).toBe("NEED_EDIT");
+  });
+  it("evidence_level=video + điểm cao -> APPROVE_RUN_ADS", () => {
+    const r = decideFinalAction({ ...highScores, evidence_level: "video" });
+    expect(r.final_action).toBe("APPROVE_RUN_ADS");
+  });
+  it("không truyền evidence_level -> APPROVE (giữ hành vi cũ)", () => {
+    const r = decideFinalAction(highScores);
+    expect(r.final_action).toBe("APPROVE_RUN_ADS");
+  });
+});

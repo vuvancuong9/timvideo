@@ -1,6 +1,11 @@
 /**
  * Gemini content analysis (STAGE 3). Server-only.
  * Gọi Gemini REST API (generateContent) — không thêm SDK. Trả strict JSON.
+ *
+ * Nhận VIDEO THẬT (videoPart: inline_data hoặc file_data) — không chỉ text/ảnh.
+ * evidence_level do CODE chốt (dựa videoPart đã gửi + đối chiếu model.video_seen),
+ * model KHÔNG thể tự nâng. Nếu Gemini lỗi vì không đọc được file video → ném rõ,
+ * TUYỆT ĐỐI không fallback bịa nội dung.
  */
 import { getGeminiConfig } from "@/lib/secrets";
 import {
@@ -18,7 +23,12 @@ import {
   capConfidence,
   getConfidenceRule,
 } from "@/lib/video-review/confidence-config";
-import type { ContentAnalysisResult } from "@/types/videoReview";
+import {
+  coerceEvidenceLevel,
+  reconcileEvidence,
+  type VideoPart,
+} from "@/lib/video-review/gemini-video-input";
+import type { ContentAnalysisResult, EvidenceLevel } from "@/types/videoReview";
 
 export type GeminiAnalyzeOutput = {
   result: ContentAnalysisResult;
@@ -26,18 +36,36 @@ export type GeminiAnalyzeOutput = {
   raw: unknown;
 };
 
+export type GeminiImagePart = { data: string; mimeType: string };
+
+export type AnalyzeOpts = {
+  videoPart?: VideoPart | null;
+  imageParts?: GeminiImagePart[];
+  modelOverride?: string;
+};
+
 type GeminiPart =
   | { text: string }
-  | { inline_data: { mime_type: string; data: string } };
+  | { inline_data: { mime_type: string; data: string } }
+  | { file_data: { file_uri: string; mime_type?: string } };
+
+/** Lỗi từ Gemini có phải do không truy cập được file/uri video không. */
+function isFileAccessError(msg: string): boolean {
+  return /file|file_uri|\buri\b|FAILED_PRECONDITION|not .*ACTIVE|PERMISSION_DENIED|unsupported/i.test(
+    msg,
+  );
+}
 
 export async function analyzeContentWithGemini(
   input: ContentAnalysisPromptInput,
-  images?: { data: string; mimeType: string }[],
+  opts?: AnalyzeOpts,
 ): Promise<GeminiAnalyzeOutput> {
-  const { apiKey, model } = await getGeminiConfig();
+  const cfg = await getGeminiConfig();
+  const apiKey = cfg.apiKey;
   if (!apiKey) {
     throw new Error("Thiếu GEMINI_API_KEY để phân tích nội dung video");
   }
+  const model = opts?.modelOverride || cfg.model;
 
   const rule = await getConfidenceRule();
   const userPrompt = buildContentAnalysisUserPrompt(input);
@@ -45,9 +73,14 @@ export async function analyzeContentWithGemini(
     model,
   )}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
-  // text + (ảnh inline để Gemini đọc số liệu tương tác)
-  const parts: GeminiPart[] = [{ text: userPrompt }];
-  for (const img of images ?? []) {
+  const videoPart = opts?.videoPart ?? null;
+  const imageParts = opts?.imageParts ?? [];
+
+  // Thứ tự: VIDEO trước → prompt → ảnh (số liệu tương tác).
+  const parts: GeminiPart[] = [];
+  if (videoPart) parts.push(videoPart as GeminiPart);
+  parts.push({ text: userPrompt });
+  for (const img of imageParts) {
     parts.push({ inline_data: { mime_type: img.mimeType, data: img.data } });
   }
 
@@ -58,30 +91,56 @@ export async function analyzeContentWithGemini(
     },
     contents: [{ role: "user", parts }],
     generationConfig: {
-      temperature: 0.4,
+      temperature: 0.15,
       responseMimeType: "application/json",
     },
   };
 
-  const raw = await withRetry(
-    async () => {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        const t = await res.text().catch(() => "");
-        throw new Error(`Gemini error ${res.status}: ${t}`.slice(0, 500));
-      }
-      return res.json();
-    },
-    { retries: 3, label: "gemini-analyze" },
-  );
+  let raw: {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  try {
+    raw = await withRetry(
+      async () => {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const t = await res.text().catch(() => "");
+          throw new Error(`Gemini error ${res.status}: ${t}`.slice(0, 500));
+        }
+        return res.json();
+      },
+      { retries: 3, label: "gemini-analyze" },
+    );
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (videoPart && isFileAccessError(msg)) {
+      throw new Error(
+        `Gemini không đọc được file video đã gửi — không chấm dựa trên nội dung bịa. (${msg.slice(0, 180)})`,
+      );
+    }
+    throw e;
+  }
 
-  const text: string =
-    raw?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+  const text: string = raw?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   const parsed = extractJson<Record<string, unknown>>(text);
+
+  // evidence_level CODE-authoritative: model không thể tự nâng quá những gì code gửi.
+  const modelVideoSeen = parsed.video_seen === true;
+  const codeMax: EvidenceLevel =
+    videoPart && modelVideoSeen
+      ? "video"
+      : imageParts.length > 0
+        ? "images_only"
+        : "text_only";
+  const evidence_level = reconcileEvidence(
+    codeMax,
+    coerceEvidenceLevel(parsed.evidence_level),
+  );
+  const video_seen = Boolean(videoPart) && modelVideoSeen;
 
   const result: ContentAnalysisResult = {
     summary: String(parsed.summary ?? ""),
@@ -98,9 +157,13 @@ export async function analyzeContentWithGemini(
     strong_scenes: coerceStringArray(parsed.strong_scenes),
     weak_scenes: coerceStringArray(parsed.weak_scenes),
     remake_angles: coerceStringArray(parsed.remake_angles),
+    video_seen,
+    evidence_level,
+    policy_visible_evidence: coerceStringArray(parsed.policy_visible_evidence),
+    // Cap confidence theo VIDEO THẬT đã thấy (không phải chỉ "có file").
     confidence: capConfidence(
       coerceConfidence(parsed.confidence),
-      input.hasVideoFile,
+      evidence_level === "video",
       rule,
     ),
   };
