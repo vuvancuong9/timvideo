@@ -67,6 +67,7 @@ export const NAV_BY_ROLE: Record<UserRole, NavSection[]> = {
         { href: "/admin/dashboard", label: "Tổng quan" },
         { href: "/admin/new-video", label: "Nhập video mới" },
         { href: "/admin/video-reviews", label: "Video & review" },
+        { href: "/admin/sales", label: "Doanh số nhân viên" },
         { href: "/admin/short-links", label: "Link rút gọn" },
         { href: "/admin/review-jobs", label: "Review jobs" },
         { href: "/admin/policy-rules", label: "Policy rules" },

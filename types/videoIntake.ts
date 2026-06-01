@@ -37,6 +37,17 @@ export type CreateSubmissionInput = {
   } | null;
   /** Nhiều file đính kèm (video phụ + ảnh số liệu tương tác). */
   attachments?: SubmissionAttachment[] | null;
+  /** Điểm đã chấm thử (preview) gửi kèm khi submit để ghi Sheet ngay. */
+  preview_scores?: PreviewScores | null;
+};
+
+/** Điểm chấm thử gửi kèm submit (để ghi Sheet/log mà khỏi chờ worker). */
+export type PreviewScores = {
+  creative_score: number;
+  policy_safety_score: number;
+  copyright_safety_score: number;
+  final_score: number;
+  final_action: string;
 };
 
 export type DuplicateExisting = {

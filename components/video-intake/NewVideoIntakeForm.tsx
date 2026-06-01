@@ -71,6 +71,12 @@ export function NewVideoIntakeForm({
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [subId, setSubId] = useState<string>("");
 
+  // Bắt buộc chấm điểm xong mới cho gửi. Khi đổi thông tin ảnh hưởng điểm thì
+  // preview cũ không còn đúng -> xóa, buộc chấm lại.
+  function invalidatePreview() {
+    setPreview((p) => (p ? null : p));
+  }
+
   // Cache file -> đã upload, để chấm thử rồi gửi không upload lại.
   const uploadCache = useRef<Map<File, UploadedFile>>(new Map());
 
@@ -337,6 +343,11 @@ export function NewVideoIntakeForm({
       setError(v);
       return;
     }
+    // BẮT BUỘC: phải chấm điểm thử xong mới cho gửi.
+    if (!preview) {
+      setError('Vui lòng bấm "🎯 Chấm điểm thử ngay" trước khi gửi video.');
+      return;
+    }
     setSubmitting(true);
     try {
       let primary = null;
@@ -357,6 +368,14 @@ export function NewVideoIntakeForm({
           staff_note: note || null,
           drive: primary,
           attachments,
+          // Gửi kèm điểm đã chấm thử để lưu DB + ghi Sheet ngay (khỏi chờ worker).
+          preview_scores: {
+            creative_score: preview.creative.creative_score,
+            policy_safety_score: preview.policy.policy_safety_score,
+            copyright_safety_score: preview.policy.copyright_safety_score,
+            final_score: preview.decision.final_score,
+            final_action: preview.decision.final_action,
+          },
         }),
       });
       const json = await res.json();
@@ -489,7 +508,10 @@ export function NewVideoIntakeForm({
           <input
             type="url"
             value={videoUrl}
-            onChange={(e) => setVideoUrl(e.target.value)}
+            onChange={(e) => {
+              setVideoUrl(e.target.value);
+              invalidatePreview();
+            }}
             placeholder="Link TikTok / Facebook / YouTube / khác"
             className={inputClass}
           />
@@ -516,7 +538,10 @@ export function NewVideoIntakeForm({
             type="file"
             accept="video/*,image/*"
             multiple
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+            onChange={(e) => {
+              setFiles(Array.from(e.target.files ?? []));
+              invalidatePreview();
+            }}
             className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-brand-dark"
           />
           {files.length > 0 && (
@@ -568,23 +593,29 @@ export function NewVideoIntakeForm({
 
       <div className="flex flex-wrap items-center gap-3">
         <button
-          type="submit"
-          disabled={submitDisabled}
-          className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {submitting ? "Đang lưu…" : "Gửi video"}
-        </button>
-        <button
           type="button"
           onClick={onScore}
           disabled={busy || duplicate}
           className="rounded-lg border border-brand px-5 py-2.5 text-sm font-semibold text-brand transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          {scoring ? "Đang chấm điểm…" : "🎯 Chấm điểm thử ngay"}
+          {scoring
+            ? "Đang chấm điểm…"
+            : preview
+              ? "🎯 Chấm lại"
+              : "🎯 Chấm điểm thử ngay"}
+        </button>
+        <button
+          type="submit"
+          disabled={submitDisabled || !preview}
+          className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+          title={!preview ? "Hãy chấm điểm thử trước khi gửi" : undefined}
+        >
+          {submitting ? "Đang lưu…" : "Gửi video"}
         </button>
         <span className="text-xs text-gray-400">
-          Chấm thử bằng AI (Gemini + ChatGPT), không lưu — để xem video thế nào
-          trước khi gửi.
+          {preview
+            ? "Đã chấm điểm — bạn có thể gửi video."
+            : "Bắt buộc bấm “Chấm điểm thử ngay” trước, rồi mới gửi được."}
         </span>
       </div>
 

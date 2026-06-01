@@ -13,8 +13,12 @@ import {
 } from "@/lib/video-intake/sub-id";
 import { ApiError } from "@/lib/http";
 import { writeAuditLog } from "@/lib/audit";
-import { appendSubmissionRow } from "@/lib/sheets";
-import { SOURCE_TYPE_LABELS } from "@/lib/video-intake/labels";
+import { appendSubmissionRow, updateSubmissionScores } from "@/lib/sheets";
+import {
+  SOURCE_TYPE_LABELS,
+  FINAL_ACTION_VERDICT,
+} from "@/lib/video-intake/labels";
+import type { VideoFinalAction } from "@/types/videoReview";
 import type { Database } from "@/lib/database.types";
 import type { CreateSubmissionInput } from "@/types/videoIntake";
 
@@ -200,6 +204,30 @@ export async function createSubmissionWithJob(
       entityId: sub.id,
       after: { sub_id: subId, error: r.error ?? null },
     });
+
+    // Nếu nhân viên đã chấm điểm thử trước khi gửi -> ghi LUÔN điểm + kết luận
+    // vào Sheet (cột N..R), khỏi chờ worker chạy.
+    if (r.ok && input.preview_scores) {
+      const ps = input.preview_scores;
+      const action = ps.final_action as VideoFinalAction;
+      const verdict =
+        FINAL_ACTION_VERDICT[action]?.headline ?? ps.final_action;
+      const sr = await updateSubmissionScores(subId, {
+        status: "Đã chấm (thử)",
+        creative: Math.round(ps.creative_score),
+        policy: Math.round(ps.policy_safety_score),
+        copyright: Math.round(ps.copyright_safety_score),
+        finalScore: Math.round(ps.final_score),
+        verdict,
+      });
+      await writeAuditLog({
+        actorId: userId,
+        action: sr.ok ? "sheet.scores_ok" : "sheet.scores_failed",
+        entityType: "video_submission",
+        entityId: sub.id,
+        after: { sub_id: subId, error: sr.error ?? null },
+      });
+    }
   } catch {
     // tuyệt đối không làm fail submit vì lỗi Sheet
   }
