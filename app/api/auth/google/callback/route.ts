@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireApi } from "@/lib/auth/session";
 import { exchangeAndStore } from "@/lib/drive-oauth";
 import { writeAuditLog } from "@/lib/audit";
+import { ApiError } from "@/lib/http";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -15,9 +16,11 @@ export async function GET(req: NextRequest) {
     const session = guard;
 
     const code = req.nextUrl.searchParams.get("code");
-    const err = req.nextUrl.searchParams.get("error");
-    if (err || !code) {
+    const oauthErr = req.nextUrl.searchParams.get("error");
+    if (oauthErr || !code) {
+      // Google từ chối ngay (vd access_denied) — truyền lý do để admin thấy.
       settingsUrl.searchParams.set("google", "error");
+      settingsUrl.searchParams.set("reason", oauthErr || "no_code");
       return NextResponse.redirect(settingsUrl);
     }
 
@@ -30,8 +33,18 @@ export async function GET(req: NextRequest) {
 
     settingsUrl.searchParams.set("google", "connected");
     return NextResponse.redirect(settingsUrl);
-  } catch {
+  } catch (e) {
+    // Lỗi khi đổi code lấy token (vd redirect_uri_mismatch, invalid_client,
+    // NO_REFRESH_TOKEN). Truyền message ngắn để admin tự chẩn đoán; log đầy đủ.
+    console.error("[google-callback] exchange failed:", e);
+    const reason =
+      e instanceof ApiError
+        ? e.code || e.message
+        : e instanceof Error
+          ? e.message.slice(0, 160)
+          : "unknown";
     settingsUrl.searchParams.set("google", "error");
+    settingsUrl.searchParams.set("reason", reason);
     return NextResponse.redirect(settingsUrl);
   }
 }

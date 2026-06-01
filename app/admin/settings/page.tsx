@@ -12,10 +12,10 @@ export const dynamic = "force-dynamic";
 export default async function AdminSettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ google?: string }>;
+  searchParams: Promise<{ google?: string; reason?: string }>;
 }) {
   await requireRole(["admin"]);
-  const { google: googleStatus } = await searchParams;
+  const { google: googleStatus, reason: googleReason } = await searchParams;
 
   const { managed, system } = await getManagedSettingsStatus();
   const driveConnected = await isDriveOAuthConnected();
@@ -53,10 +53,34 @@ export default async function AdminSettingsPage({
           </p>
         )}
         {googleStatus === "error" && (
-          <p className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mb-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
             ❌ Kết nối thất bại. Kiểm tra Client ID/Secret + Redirect URI rồi thử
             lại.
-          </p>
+            {googleReason && (
+              <div className="mt-1 font-mono text-xs text-red-500">
+                Lý do: {googleReason}
+                {googleReason === "redirect_uri_mismatch" && (
+                  <span className="block font-sans text-red-600">
+                    → Vào Google Cloud → Credentials → OAuth client → thêm đúng
+                    Authorized redirect URI:{" "}
+                    {`${"https://timvideo.vercel.app"}/api/auth/google/callback`}
+                  </span>
+                )}
+                {googleReason === "NO_REFRESH_TOKEN" && (
+                  <span className="block font-sans text-red-600">
+                    → Google không trả refresh token. Gỡ quyền cũ tại
+                    myaccount.google.com/permissions rồi bấm Kết nối lại.
+                  </span>
+                )}
+                {googleReason === "access_denied" && (
+                  <span className="block font-sans text-red-600">
+                    → Bạn đã bấm Hủy/Deny ở màn hình Google, hoặc email chưa nằm
+                    trong Test users (nếu app để Testing). Thử lại và bấm Allow.
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
         )}
         <div className="flex flex-wrap items-center gap-3">
           <span className="text-sm text-gray-600">Trạng thái:</span>
