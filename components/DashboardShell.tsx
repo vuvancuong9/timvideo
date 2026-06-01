@@ -1,5 +1,6 @@
 import { Sidebar } from "@/components/Sidebar";
 import { SignOutButton } from "@/components/SignOutButton";
+import { ChangePasswordButton } from "@/components/ChangePasswordButton";
 import { NAV_BY_ROLE, ROLE_LABELS, type UserRole } from "@/lib/constants";
 
 export function DashboardShell({
@@ -32,6 +33,7 @@ export function DashboardShell({
             <span className="hidden text-sm text-gray-500 sm:inline">
               {email}
             </span>
+            <ChangePasswordButton email={email} />
             <SignOutButton />
           </div>
         </header>
