@@ -3,13 +3,15 @@
  * account — vì SA Gmail có 0 quota). File do chính tài khoản admin sở hữu nên
  * dùng quota Drive của họ.
  *
- * Scope: drive.file (chỉ quản file app tạo) → KHÔNG cần Google verify app,
- * refresh token không hết hạn khi app ở chế độ Published/Testing với test user.
+ * Scope: drive (full) — cần để ghi vào folder admin TỰ TẠO sẵn (vd "Video Nhân
+ * Viên Tìm"). Scope hẹp drive.file chỉ thấy file do app tạo nên không ghi được
+ * vào folder ngoài. App ở chế độ Published nên refresh token không hết hạn.
  *
  * Credential lưu trong app_settings:
  *   GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET  (admin nhập)
  *   GOOGLE_OAUTH_REFRESH_TOKEN                          (callback tự lưu)
- *   GOOGLE_OAUTH_FOLDER_ID                              (app tự tạo & lưu)
+ *   GOOGLE_DRIVE_FOLDER_ID    (admin nhập — folder đích ưu tiên, vd 1qd6...)
+ *   GOOGLE_OAUTH_FOLDER_ID    (app tự tạo & lưu — chỉ dùng khi admin chưa set folder)
  * Server-only.
  */
 import { google } from "googleapis";
@@ -18,7 +20,8 @@ import { invalidateSettingsCache } from "@/lib/secrets";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { ApiError } from "@/lib/http";
 
-export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+// Full Drive scope: cần để ghi vào folder admin tự tạo (drive.file không thấy).
+export const DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive";
 const FOLDER_NAME = "timvideo-uploads";
 
 /** Redirect URI cố định theo domain production (đăng ký trong Google Console). */
@@ -100,8 +103,17 @@ async function getAuthorizedClient(origin = "https://timvideo.vercel.app") {
   return client;
 }
 
-/** Tìm/tạo folder timvideo-uploads trong Drive admin, cache id vào settings. */
+/**
+ * Xác định folder đích để upload:
+ * 1) Ưu tiên GOOGLE_DRIVE_FOLDER_ID admin tự cấu hình (vd folder "Video Nhân
+ *    Viên Tìm"). Với scope full drive, app ghi thẳng vào folder này được.
+ * 2) Nếu chưa set, dùng GOOGLE_OAUTH_FOLDER_ID đã cache (app tự tạo trước đó).
+ * 3) Nếu cũng chưa có, tự tạo folder "timvideo-uploads" rồi cache lại.
+ */
 async function ensureFolder(origin?: string): Promise<string> {
+  const configured = await getSetting("GOOGLE_DRIVE_FOLDER_ID");
+  if (configured && configured.trim()) return configured.trim();
+
   const cached = await getSetting("GOOGLE_OAUTH_FOLDER_ID");
   if (cached) return cached;
 
