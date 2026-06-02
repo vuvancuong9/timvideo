@@ -28,7 +28,13 @@ import {
   reconcileEvidence,
   type VideoPart,
 } from "@/lib/video-review/gemini-video-input";
-import type { ContentAnalysisResult, EvidenceLevel } from "@/types/videoReview";
+import type {
+  ContentAnalysisResult,
+  EvidenceLevel,
+  ReviewVideoType,
+  ObservedEvidence,
+  ExpertDiagnosis,
+} from "@/types/videoReview";
 
 export type GeminiAnalyzeOutput = {
   result: ContentAnalysisResult;
@@ -54,6 +60,50 @@ function isFileAccessError(msg: string): boolean {
   return /file|file_uri|\buri\b|FAILED_PRECONDITION|not .*ACTIVE|PERMISSION_DENIED|unsupported/i.test(
     msg,
   );
+}
+
+function coerceBool(v: unknown): boolean {
+  if (typeof v === "boolean") return v;
+  const s = String(v ?? "").toLowerCase();
+  return s === "true" || s === "1" || s === "yes";
+}
+
+const VIDEO_TYPES: ReviewVideoType[] = [
+  "review",
+  "sales_deal",
+  "unboxing",
+  "demo",
+  "comparison",
+  "testimonial",
+  "unknown",
+];
+function coerceVideoType(v: unknown): ReviewVideoType {
+  const s = String(v ?? "").toLowerCase();
+  return (VIDEO_TYPES as string[]).includes(s)
+    ? (s as ReviewVideoType)
+    : "unknown";
+}
+
+function coerceObservedEvidence(v: unknown): ObservedEvidence[] {
+  if (!Array.isArray(v)) return [];
+  return v.slice(0, 30).map((x) => {
+    const o = x && typeof x === "object" ? (x as Record<string, unknown>) : {};
+    return {
+      timestamp: String(o.timestamp ?? ""),
+      evidence: String(o.evidence ?? ""),
+      affects: coerceStringArray(o.affects),
+    };
+  });
+}
+
+function coerceExpertDiagnosis(v: unknown): ExpertDiagnosis {
+  const o = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
+  return {
+    main_problem: String(o.main_problem ?? ""),
+    why_not_review: coerceStringArray(o.why_not_review),
+    why_not_viral_enough: coerceStringArray(o.why_not_viral_enough),
+    recommended_fix: coerceStringArray(o.recommended_fix),
+  };
 }
 
 export async function analyzeContentWithGemini(
@@ -91,7 +141,7 @@ export async function analyzeContentWithGemini(
     },
     contents: [{ role: "user", parts }],
     generationConfig: {
-      temperature: 0.15,
+      temperature: 0.2,
       responseMimeType: "application/json",
     },
   };
@@ -166,6 +216,13 @@ export async function analyzeContentWithGemini(
       evidence_level === "video",
       rule,
     ),
+
+    objective: "review_share_viral",
+    video_type: coerceVideoType(parsed.video_type),
+    // Anti-bias: KHÔNG coi là review thật nếu chưa xem được video thật.
+    is_real_review: coerceBool(parsed.is_real_review) && evidence_level === "video",
+    observed_evidence: coerceObservedEvidence(parsed.observed_evidence),
+    expert_diagnosis: coerceExpertDiagnosis(parsed.expert_diagnosis),
   };
 
   return { result, model, raw };

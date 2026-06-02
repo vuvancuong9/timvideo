@@ -10,7 +10,7 @@ import { analyzeContentWithGemini } from "@/lib/video-review/gemini-analyze";
 import { checkPolicyWithOpenAI } from "@/lib/video-review/openai-policy";
 import { scoreCreativeWithOpenAI } from "@/lib/video-review/openai-creative-score";
 import {
-  computeCreativeScore,
+  computeContentScore,
   decideFinalAction,
 } from "@/lib/video-review/final-decision";
 import { getThresholds } from "@/lib/video-review/policy-config";
@@ -81,6 +81,13 @@ export async function scoreVideoPreview(
       imageCount: imageParts.length,
       hasVideoFile: input.hasVideoFile,
       videoProvided: video.videoSeenSent,
+      evidenceLevel: (video.videoSeenSent
+        ? "video"
+        : imageParts.length > 0
+          ? "images_only"
+          : "text_only") as "video" | "frames" | "images_only" | "text_only",
+      videoSeen: video.videoSeenSent,
+      videoInputWarnings: video.warning ? [video.warning] : [],
     },
     { videoPart: video.part, imageParts },
   );
@@ -100,7 +107,7 @@ export async function scoreVideoPreview(
     hasVideoFile: videoSeen,
   });
 
-  // STAGE: CREATIVE (OpenAI) — điểm tổng do code tự tính.
+  // STAGE: CREATIVE (OpenAI) — điểm review/viral; content_score do code tính.
   const creative = await scoreCreativeWithOpenAI({
     productCategory: input.categoryName,
     shopeeProductUrl: input.shopeeProductUrl,
@@ -111,11 +118,15 @@ export async function scoreVideoPreview(
     visualSummary: analysis.result.visual_summary,
     transcript: null,
     hasVideoFile: videoSeen,
+    evidenceLevel: analysis.result.evidence_level,
+    videoType: analysis.result.video_type,
+    isRealReview: analysis.result.is_real_review,
   });
-  const creativeScore = computeCreativeScore(creative.result);
 
   // STAGE: FINAL DECISION (deterministic) — dùng ngưỡng admin cấu hình.
   const thresholds = await getThresholds();
+  const cr = creative.result;
+  const contentScore = computeContentScore(cr, thresholds);
   const groups = await getEnabledRiskGroups();
   const rs = policy.result.risk_scores;
   const policyCriticalBlock = groups.some(
@@ -127,13 +138,26 @@ export async function scoreVideoPreview(
   );
   const decision = decideFinalAction(
     {
-      creative_score: creativeScore,
+      evidence_level: analysis.result.evidence_level,
+      video_type: analysis.result.video_type,
+      is_real_review: analysis.result.is_real_review,
+      review_depth_score: cr.review_depth_score,
+      product_demo_score: cr.product_demo_score,
+      authenticity_score: cr.authenticity_score,
+      viral_hook_score: cr.viral_hook_score,
+      retention_score: cr.retention_score,
+      shareability_score: cr.shareability_score,
+      sales_conversion_score: cr.sales_conversion_score,
+      production_quality_score: cr.production_quality_score,
       policy_safety_score: policy.result.policy_safety_score,
       copyright_safety_score: policy.result.copyright_safety_score,
       final_policy_level: policy.result.final_policy_level,
+      ip_trademark_risk: rs.ip_trademark_risk ?? "low",
+      music_copyright_risk: rs.music_copyright_risk ?? "low",
+      ugc_reupload_risk: rs.ugc_reupload_risk ?? "low",
+      counterfeit_risk: rs.counterfeit_risk ?? "low",
       policy_critical_block: policyCriticalBlock,
       copyright_critical_block: copyrightCriticalBlock,
-      evidence_level: analysis.result.evidence_level,
     },
     thresholds,
   );
@@ -141,7 +165,7 @@ export async function scoreVideoPreview(
   return {
     analysis: analysis.result,
     policy: policy.result,
-    creative: { ...creative.result, creative_score: creativeScore },
+    creative: { ...cr, creative_score: contentScore },
     decision,
   };
 }

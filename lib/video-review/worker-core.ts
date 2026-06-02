@@ -18,7 +18,7 @@ import { analyzeContentWithGemini } from "@/lib/video-review/gemini-analyze";
 import { checkPolicyWithOpenAI } from "@/lib/video-review/openai-policy";
 import { scoreCreativeWithOpenAI } from "@/lib/video-review/openai-creative-score";
 import {
-  computeCreativeScore,
+  computeContentScore,
   decideFinalAction,
 } from "@/lib/video-review/final-decision";
 import { getThresholds } from "@/lib/video-review/policy-config";
@@ -168,6 +168,13 @@ async function processClaimedJob(
     imageCount: imageParts.length,
     hasVideoFile,
     videoProvided: video.videoSeenSent,
+    evidenceLevel: (video.videoSeenSent
+      ? "video"
+      : imageParts.length > 0
+        ? "images_only"
+        : "text_only") as "video" | "frames" | "images_only" | "text_only",
+    videoSeen: video.videoSeenSent,
+    videoInputWarnings: video.warning ? [video.warning] : [],
   };
   let analysis = await analyzeContentWithGemini(analyzeInput, {
     videoPart: video.part,
@@ -211,10 +218,16 @@ async function processClaimedJob(
     strong_scenes: analysis.result.strong_scenes,
     weak_scenes: analysis.result.weak_scenes,
     remake_angles: analysis.result.remake_angles,
-    // evidence_level/video_seen lưu trong raw_response (chưa có cột riêng).
+    objective: analysis.result.objective,
+    evidence_level: analysis.result.evidence_level,
+    video_type: analysis.result.video_type,
+    is_real_review: analysis.result.is_real_review,
+    video_seen: analysis.result.video_seen,
+    observed_evidence:
+      analysis.result.observed_evidence as Database["public"]["Tables"]["video_content_analysis"]["Insert"]["observed_evidence"],
+    expert_diagnosis:
+      analysis.result.expert_diagnosis as Database["public"]["Tables"]["video_content_analysis"]["Insert"]["expert_diagnosis"],
     raw_response: {
-      evidence_level: analysis.result.evidence_level,
-      video_seen: analysis.result.video_seen,
       policy_visible_evidence: analysis.result.policy_visible_evidence,
       gemini: analysis.raw,
     } as Database["public"]["Tables"]["video_content_analysis"]["Insert"]["raw_response"],
@@ -264,6 +277,11 @@ async function processClaimedJob(
     adult_sensitive_risk: rs.adult_sensitive_risk ?? "low",
     ip_trademark_risk: rs.ip_trademark_risk ?? "low",
     restricted_product_risk: rs.restricted_product_risk ?? "low",
+    misleading_price_risk: rs.misleading_price_risk ?? "low",
+    brand_visible_warning: rs.brand_visible_warning ?? "low",
+    counterfeit_risk: rs.counterfeit_risk ?? "low",
+    music_copyright_risk: rs.music_copyright_risk ?? "low",
+    ugc_reupload_risk: rs.ugc_reupload_risk ?? "low",
     risk_reasons: policy.result.risk_reasons,
     policy_references: policy.result.policy_references,
     suggested_fixes: policy.result.suggested_fixes,
@@ -294,32 +312,47 @@ async function processClaimedJob(
     visualSummary: analysis.result.visual_summary,
     transcript,
     hasVideoFile: videoSeen,
+    evidenceLevel: analysis.result.evidence_level,
+    videoType: analysis.result.video_type,
+    isRealReview: analysis.result.is_real_review,
   });
-  const creativeScore = computeCreativeScore(creative.result);
+  const thresholds = await getThresholds();
+  const cr = creative.result;
+  const contentScore = computeContentScore(cr, thresholds);
   await db.from("video_creative_scores").insert({
     video_submission_id: submission.id,
     provider: "openai",
     model: creative.model,
-    confidence: creative.result.confidence,
-    hook_score: creative.result.hook_score,
-    product_clarity_score: creative.result.product_clarity_score,
-    demo_score: creative.result.demo_score,
-    trust_score: creative.result.trust_score,
-    affiliate_fit_score: creative.result.affiliate_fit_score,
-    remake_score: creative.result.remake_score,
-    creative_score: creativeScore,
-    reasons: creative.result.reasons,
-    suggested_titles: creative.result.suggested_titles,
-    suggested_scripts: creative.result.suggested_scripts,
-    suggested_edits: creative.result.suggested_edits,
+    confidence: cr.confidence,
+    // Map điểm review/viral -> cột legacy để UI cũ không vỡ.
+    hook_score: cr.viral_hook_score,
+    product_clarity_score: cr.production_quality_score,
+    demo_score: cr.product_demo_score,
+    trust_score: cr.authenticity_score,
+    affiliate_fit_score: cr.sales_conversion_score,
+    remake_score: cr.shareability_score,
+    creative_score: contentScore,
+    // Cột review/viral mới.
+    review_depth_score: cr.review_depth_score,
+    product_demo_score: cr.product_demo_score,
+    authenticity_score: cr.authenticity_score,
+    viral_hook_score: cr.viral_hook_score,
+    retention_score: cr.retention_score,
+    shareability_score: cr.shareability_score,
+    sales_conversion_score: cr.sales_conversion_score,
+    production_quality_score: cr.production_quality_score,
+    content_score: contentScore,
+    reasons: cr.reasons,
+    suggested_titles: cr.suggested_titles,
+    suggested_scripts: cr.suggested_scripts,
+    suggested_edits: cr.suggested_edits,
     raw_response:
       creative.raw as Database["public"]["Tables"]["video_creative_scores"]["Insert"]["raw_response"],
   });
 
   // STAGE 6: FINAL DECISION (deterministic — code quyết định)
   await setStage(db, job.id, "decision");
-  const thresholds = await getThresholds();
-  // Suy điều kiện reject-critical từ nhóm rủi ro cấu hình động (thay coupling ip_trademark cũ).
+  // Suy điều kiện reject-critical từ nhóm rủi ro cấu hình động.
   const decisionGroups = await getEnabledRiskGroups();
   const policyCriticalBlock = decisionGroups.some(
     (g) => g.critical_blocks && g.category === "policy" && rs[g.key] === "critical",
@@ -330,19 +363,34 @@ async function processClaimedJob(
   );
   const decision = decideFinalAction(
     {
-      creative_score: creativeScore,
+      evidence_level: analysis.result.evidence_level,
+      video_type: analysis.result.video_type,
+      is_real_review: analysis.result.is_real_review,
+      review_depth_score: cr.review_depth_score,
+      product_demo_score: cr.product_demo_score,
+      authenticity_score: cr.authenticity_score,
+      viral_hook_score: cr.viral_hook_score,
+      retention_score: cr.retention_score,
+      shareability_score: cr.shareability_score,
+      sales_conversion_score: cr.sales_conversion_score,
+      production_quality_score: cr.production_quality_score,
       policy_safety_score: policy.result.policy_safety_score,
       copyright_safety_score: policy.result.copyright_safety_score,
       final_policy_level: policy.result.final_policy_level,
+      ip_trademark_risk: rs.ip_trademark_risk ?? "low",
+      music_copyright_risk: rs.music_copyright_risk ?? "low",
+      ugc_reupload_risk: rs.ugc_reupload_risk ?? "low",
+      counterfeit_risk: rs.counterfeit_risk ?? "low",
       policy_critical_block: policyCriticalBlock,
       copyright_critical_block: copyrightCriticalBlock,
-      evidence_level: analysis.result.evidence_level,
     },
     thresholds,
   );
   await db.from("video_final_decisions").insert({
     video_submission_id: submission.id,
     creative_score: decision.creative_score,
+    content_score: decision.content_score,
+    review_depth_score: decision.review_depth_score,
     policy_safety_score: decision.policy_safety_score,
     copyright_safety_score: decision.copyright_safety_score,
     final_score: decision.final_score,
@@ -350,6 +398,9 @@ async function processClaimedJob(
     decision_reason: decision.decision_reason,
     blocking_reasons: decision.blocking_reasons,
     required_edits: decision.required_edits,
+    evidence_level: analysis.result.evidence_level,
+    video_type: analysis.result.video_type,
+    is_real_review: analysis.result.is_real_review,
   });
 
   // map final_action → submission.status
@@ -363,6 +414,9 @@ async function processClaimedJob(
     REJECT_POLICY_RISK: "rejected",
     REJECT_COPYRIGHT_RISK: "rejected",
     LOW_PERFORMANCE: "reviewed",
+    REMAKE_AS_REVIEW: "need_edit",
+    LOW_REVIEW_QUALITY: "reviewed",
+    NEED_RIGHTS_CHECK: "need_edit",
   };
   await db
     .from("video_submissions")

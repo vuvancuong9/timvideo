@@ -69,19 +69,21 @@ export async function scoreCreativeWithOpenAI(
   const parsed = extractJson<Record<string, unknown>>(text);
 
   const result: CreativeScoreModelResult = {
-    hook_score: coerceScore(parsed.hook_score),
-    product_clarity_score: coerceScore(parsed.product_clarity_score),
-    demo_score: coerceScore(parsed.demo_score),
-    trust_score: coerceScore(parsed.trust_score),
-    affiliate_fit_score: coerceScore(parsed.affiliate_fit_score),
-    remake_score: coerceScore(parsed.remake_score),
+    review_depth_score: coerceScore(parsed.review_depth_score),
+    product_demo_score: coerceScore(parsed.product_demo_score),
+    authenticity_score: coerceScore(parsed.authenticity_score),
+    viral_hook_score: coerceScore(parsed.viral_hook_score),
+    retention_score: coerceScore(parsed.retention_score),
+    shareability_score: coerceScore(parsed.shareability_score),
+    sales_conversion_score: coerceScore(parsed.sales_conversion_score),
+    production_quality_score: coerceScore(parsed.production_quality_score),
     reasons: coerceStringArray(parsed.reasons),
     suggested_titles: coerceStringArray(parsed.suggested_titles),
     suggested_scripts: coerceStringArray(parsed.suggested_scripts),
     suggested_edits: coerceStringArray(parsed.suggested_edits),
     confidence: capConfidence(
       coerceConfidence(parsed.confidence),
-      input.hasVideoFile,
+      input.evidenceLevel === "video",
       rule,
     ),
   };

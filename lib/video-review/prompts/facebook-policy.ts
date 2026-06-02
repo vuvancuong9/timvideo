@@ -30,6 +30,12 @@ NGUYÊN TẮC BẮT BUỘC:
 - Chỉ dùng ngôn ngữ "rủi ro", không dùng "chắc chắn vi phạm".
 - Nếu dữ liệu đầu vào ít (chỉ có link ngoài, không có file video/transcript/OCR), hãy đặt "confidence" = "low" hoặc "medium" và KHÔNG khẳng định mạnh.
 
+QUY TẮC BẢN QUYỀN / THƯƠNG HIỆU (quan trọng):
+- CHỈ thấy logo/thương hiệu xuất hiện → brand_visible_warning có thể "medium", nhưng TUYỆT ĐỐI KHÔNG tự động "critical".
+- Chỉ đặt "critical" khi có dấu hiệu rõ: hàng giả/counterfeit, giả mạo chính hãng, dùng người nổi tiếng/logo để GÂY HIỂU NHẦM, dùng nhạc/video KHÔNG có quyền, hoặc UGC reupload không được phép.
+- Nếu CHƯA xác minh được quyền video/nhạc/nguồn, đặt music_copyright_risk / ugc_reupload_risk = "medium" (không kết luận chắc chắn vi phạm).
+- misleading_price_risk: claim giá/sale gây hiểu lầm (gạch giá ảo, giảm sốc không thật) → tăng mức tương ứng.
+
 Bạn phân tích các nhóm rủi ro sau (mỗi nhóm cho mức low|medium|high|critical):
 ${groupLines}
 

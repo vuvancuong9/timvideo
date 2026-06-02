@@ -16,14 +16,18 @@ export const FINAL_DECISION_WEIGHTS = {
 
 export const FINAL_ACTION_RULES: PolicyRuleGroup[] = [
   {
-    title: "Thứ tự quyết định (deterministic, code tự tính)",
+    title: "Thứ tự quyết định (deterministic — review/lan tỏa; policy là cổng chặn)",
     rules: [
-      "policy_safety_score < 50 HOẶC final_policy_level = critical → REJECT_POLICY_RISK",
-      "copyright_safety_score < 50 HOẶC nhóm copyright (critical ⇒ chặn) = critical → REJECT_COPYRIGHT_RISK",
-      "policy_safety_score < 70 HOẶC final_policy_level = high → NEED_EDIT",
-      "creative ≥ 75 VÀ policy ≥ 75 VÀ copyright ≥ 70 → APPROVE_RUN_ADS",
-      "creative ≥ 70 → REMAKE_SAFE",
-      "còn lại → LOW_PERFORMANCE",
+      "evidence_level ≠ video (chưa xem được video thật) → NEED_EDIT (không tự duyệt)",
+      "policy < 50 HOẶC final_policy_level = critical → REJECT_POLICY_RISK",
+      "copyright < 50 HOẶC critical (bản quyền/nhạc/UGC/hàng giả) → REJECT_COPYRIGHT_RISK",
+      "rủi ro quyền (nhạc/UGC/hàng giả) = high → NEED_RIGHTS_CHECK",
+      "is_real_review = false HOẶC sales_deal mà review_depth chưa đủ → REMAKE_AS_REVIEW",
+      "review_depth < 40 → REMAKE_AS_REVIEW",
+      "policy < 70 HOẶC final_policy_level = high → NEED_EDIT",
+      "content_score < 50 → LOW_REVIEW_QUALITY",
+      "content_score < 70 HOẶC review_depth < 60 → NEED_EDIT",
+      "content ≥ 70 VÀ review_depth ≥ 60 VÀ policy ≥ 75 VÀ copyright ≥ 70 → APPROVE_RUN_ADS",
     ],
   },
 ];

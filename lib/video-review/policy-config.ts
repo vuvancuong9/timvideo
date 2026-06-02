@@ -14,16 +14,23 @@ const KEY = "POLICY_THRESHOLDS";
 
 /** Các trường số hợp lệ + ràng buộc nhẹ (0..1 cho trọng số, 0..100 cho ngưỡng). */
 const NUMERIC_KEYS: (keyof DecisionThresholds)[] = [
-  "w_creative",
-  "w_policy",
-  "w_copyright",
+  "w_review_depth",
+  "w_viral_hook",
+  "w_retention",
+  "w_authenticity",
+  "w_product_demo",
+  "w_sales_conversion",
   "reject_policy_below",
   "reject_copyright_below",
   "need_edit_policy_below",
-  "approve_creative_min",
+  "review_depth_reject_below",
+  "review_depth_need_edit_below",
+  "approve_content_min",
+  "approve_review_depth_min",
   "approve_policy_min",
   "approve_copyright_min",
-  "remake_creative_min",
+  "low_quality_below",
+  "need_edit_content_below",
 ];
 
 /** Trộn config DB lên default; bỏ qua field không hợp lệ. */

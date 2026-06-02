@@ -103,6 +103,51 @@ export const DEFAULT_RISK_GROUPS: PolicyRiskGroup[] = [
     critical_blocks: false,
     enabled: true,
   },
+  {
+    key: "misleading_price_risk",
+    label_vi: "Giá gây hiểu lầm (sale ảo)",
+    description_vi:
+      "claim giá/sale gây hiểu lầm: gạch giá ảo, '❌139 ✅79', giảm sốc không có thật, hối thúc mua",
+    category: "policy",
+    critical_blocks: false,
+    enabled: true,
+  },
+  {
+    key: "brand_visible_warning",
+    label_vi: "Lộ thương hiệu / logo (cảnh báo)",
+    description_vi:
+      "có logo/thương hiệu xuất hiện — CHỈ là cảnh báo, KHÔNG tự critical nếu không giả mạo/gây hiểu nhầm",
+    category: "policy",
+    critical_blocks: false,
+    enabled: true,
+  },
+  {
+    key: "counterfeit_risk",
+    label_vi: "Hàng giả / nhái / giả mạo chính hãng",
+    description_vi:
+      "dấu hiệu hàng giả/nhái, giả mạo chính hãng, dùng logo/người nổi tiếng để gây hiểu nhầm là chính hãng",
+    category: "copyright",
+    critical_blocks: true,
+    enabled: true,
+  },
+  {
+    key: "music_copyright_risk",
+    label_vi: "Bản quyền nhạc",
+    description_vi:
+      "dùng nhạc nền có bản quyền/không có quyền — nếu chưa xác minh quyền đặt mức medium, không kết luận chắc chắn",
+    category: "copyright",
+    critical_blocks: true,
+    enabled: true,
+  },
+  {
+    key: "ugc_reupload_risk",
+    label_vi: "Đăng lại video người khác (UGC)",
+    description_vi:
+      "video có dấu hiệu reupload/đăng lại nội dung người khác mà không có quyền — chưa xác minh thì để medium",
+    category: "copyright",
+    critical_blocks: true,
+    enabled: true,
+  },
 ];
 
 const DEFAULT_LABEL_BY_KEY: Record<string, string> = Object.fromEntries(

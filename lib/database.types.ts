@@ -7,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -173,15 +175,19 @@ export type Database = {
         Row: {
           adult_sensitive_risk: Database["public"]["Enums"]["risk_level"]
           before_after_risk: Database["public"]["Enums"]["risk_level"]
+          brand_visible_warning: Database["public"]["Enums"]["risk_level"]
           confidence: Database["public"]["Enums"]["analysis_confidence"]
           copyright_safety_score: number
+          counterfeit_risk: Database["public"]["Enums"]["risk_level"]
           created_at: string
           final_policy_level: Database["public"]["Enums"]["risk_level"]
           health_claim_risk: Database["public"]["Enums"]["risk_level"]
           id: string
           ip_trademark_risk: Database["public"]["Enums"]["risk_level"]
           misleading_claim_risk: Database["public"]["Enums"]["risk_level"]
+          misleading_price_risk: Database["public"]["Enums"]["risk_level"]
           model: string | null
+          music_copyright_risk: Database["public"]["Enums"]["risk_level"]
           personal_attribute_risk: Database["public"]["Enums"]["risk_level"]
           policy_references: Json
           policy_safety_score: number
@@ -192,20 +198,25 @@ export type Database = {
           risk_scores: Json
           shocking_content_risk: Database["public"]["Enums"]["risk_level"]
           suggested_fixes: Json
+          ugc_reupload_risk: Database["public"]["Enums"]["risk_level"]
           video_submission_id: string
         }
         Insert: {
           adult_sensitive_risk?: Database["public"]["Enums"]["risk_level"]
           before_after_risk?: Database["public"]["Enums"]["risk_level"]
+          brand_visible_warning?: Database["public"]["Enums"]["risk_level"]
           confidence?: Database["public"]["Enums"]["analysis_confidence"]
           copyright_safety_score?: number
+          counterfeit_risk?: Database["public"]["Enums"]["risk_level"]
           created_at?: string
           final_policy_level?: Database["public"]["Enums"]["risk_level"]
           health_claim_risk?: Database["public"]["Enums"]["risk_level"]
           id?: string
           ip_trademark_risk?: Database["public"]["Enums"]["risk_level"]
           misleading_claim_risk?: Database["public"]["Enums"]["risk_level"]
+          misleading_price_risk?: Database["public"]["Enums"]["risk_level"]
           model?: string | null
+          music_copyright_risk?: Database["public"]["Enums"]["risk_level"]
           personal_attribute_risk?: Database["public"]["Enums"]["risk_level"]
           policy_references?: Json
           policy_safety_score?: number
@@ -216,20 +227,25 @@ export type Database = {
           risk_scores?: Json
           shocking_content_risk?: Database["public"]["Enums"]["risk_level"]
           suggested_fixes?: Json
+          ugc_reupload_risk?: Database["public"]["Enums"]["risk_level"]
           video_submission_id: string
         }
         Update: {
           adult_sensitive_risk?: Database["public"]["Enums"]["risk_level"]
           before_after_risk?: Database["public"]["Enums"]["risk_level"]
+          brand_visible_warning?: Database["public"]["Enums"]["risk_level"]
           confidence?: Database["public"]["Enums"]["analysis_confidence"]
           copyright_safety_score?: number
+          counterfeit_risk?: Database["public"]["Enums"]["risk_level"]
           created_at?: string
           final_policy_level?: Database["public"]["Enums"]["risk_level"]
           health_claim_risk?: Database["public"]["Enums"]["risk_level"]
           id?: string
           ip_trademark_risk?: Database["public"]["Enums"]["risk_level"]
           misleading_claim_risk?: Database["public"]["Enums"]["risk_level"]
+          misleading_price_risk?: Database["public"]["Enums"]["risk_level"]
           model?: string | null
+          music_copyright_risk?: Database["public"]["Enums"]["risk_level"]
           personal_attribute_risk?: Database["public"]["Enums"]["risk_level"]
           policy_references?: Json
           policy_safety_score?: number
@@ -240,6 +256,7 @@ export type Database = {
           risk_scores?: Json
           shocking_content_risk?: Database["public"]["Enums"]["risk_level"]
           suggested_fixes?: Json
+          ugc_reupload_risk?: Database["public"]["Enums"]["risk_level"]
           video_submission_id?: string
         }
         Relationships: [
@@ -366,10 +383,15 @@ export type Database = {
           claims_detected: Json
           confidence: Database["public"]["Enums"]["analysis_confidence"]
           created_at: string
+          evidence_level: string
+          expert_diagnosis: Json
           hook_3s: string | null
           id: string
+          is_real_review: boolean
           key_moments: Json
           model: string | null
+          objective: string
+          observed_evidence: Json
           pain_points: Json
           product_detected: string | null
           provider: string
@@ -377,7 +399,9 @@ export type Database = {
           remake_angles: Json
           strong_scenes: Json
           summary: string | null
+          video_seen: boolean
           video_submission_id: string
+          video_type: string
           visual_summary: string | null
           weak_scenes: Json
         }
@@ -386,10 +410,15 @@ export type Database = {
           claims_detected?: Json
           confidence?: Database["public"]["Enums"]["analysis_confidence"]
           created_at?: string
+          evidence_level?: string
+          expert_diagnosis?: Json
           hook_3s?: string | null
           id?: string
+          is_real_review?: boolean
           key_moments?: Json
           model?: string | null
+          objective?: string
+          observed_evidence?: Json
           pain_points?: Json
           product_detected?: string | null
           provider?: string
@@ -397,7 +426,9 @@ export type Database = {
           remake_angles?: Json
           strong_scenes?: Json
           summary?: string | null
+          video_seen?: boolean
           video_submission_id: string
+          video_type?: string
           visual_summary?: string | null
           weak_scenes?: Json
         }
@@ -406,10 +437,15 @@ export type Database = {
           claims_detected?: Json
           confidence?: Database["public"]["Enums"]["analysis_confidence"]
           created_at?: string
+          evidence_level?: string
+          expert_diagnosis?: Json
           hook_3s?: string | null
           id?: string
+          is_real_review?: boolean
           key_moments?: Json
           model?: string | null
+          objective?: string
+          observed_evidence?: Json
           pain_points?: Json
           product_detected?: string | null
           provider?: string
@@ -417,7 +453,9 @@ export type Database = {
           remake_angles?: Json
           strong_scenes?: Json
           summary?: string | null
+          video_seen?: boolean
           video_submission_id?: string
+          video_type?: string
           visual_summary?: string | null
           weak_scenes?: Json
         }
@@ -434,7 +472,9 @@ export type Database = {
       video_creative_scores: {
         Row: {
           affiliate_fit_score: number
+          authenticity_score: number
           confidence: Database["public"]["Enums"]["analysis_confidence"]
+          content_score: number
           created_at: string
           creative_score: number
           demo_score: number
@@ -442,19 +482,28 @@ export type Database = {
           id: string
           model: string | null
           product_clarity_score: number
+          product_demo_score: number
+          production_quality_score: number
           provider: string
           raw_response: Json
           reasons: Json
           remake_score: number
+          retention_score: number
+          review_depth_score: number
+          sales_conversion_score: number
+          shareability_score: number
           suggested_edits: Json
           suggested_scripts: Json
           suggested_titles: Json
           trust_score: number
           video_submission_id: string
+          viral_hook_score: number
         }
         Insert: {
           affiliate_fit_score?: number
+          authenticity_score?: number
           confidence?: Database["public"]["Enums"]["analysis_confidence"]
+          content_score?: number
           created_at?: string
           creative_score?: number
           demo_score?: number
@@ -462,19 +511,28 @@ export type Database = {
           id?: string
           model?: string | null
           product_clarity_score?: number
+          product_demo_score?: number
+          production_quality_score?: number
           provider?: string
           raw_response?: Json
           reasons?: Json
           remake_score?: number
+          retention_score?: number
+          review_depth_score?: number
+          sales_conversion_score?: number
+          shareability_score?: number
           suggested_edits?: Json
           suggested_scripts?: Json
           suggested_titles?: Json
           trust_score?: number
           video_submission_id: string
+          viral_hook_score?: number
         }
         Update: {
           affiliate_fit_score?: number
+          authenticity_score?: number
           confidence?: Database["public"]["Enums"]["analysis_confidence"]
+          content_score?: number
           created_at?: string
           creative_score?: number
           demo_score?: number
@@ -482,15 +540,22 @@ export type Database = {
           id?: string
           model?: string | null
           product_clarity_score?: number
+          product_demo_score?: number
+          production_quality_score?: number
           provider?: string
           raw_response?: Json
           reasons?: Json
           remake_score?: number
+          retention_score?: number
+          review_depth_score?: number
+          sales_conversion_score?: number
+          shareability_score?: number
           suggested_edits?: Json
           suggested_scripts?: Json
           suggested_titles?: Json
           trust_score?: number
           video_submission_id?: string
+          viral_hook_score?: number
         }
         Relationships: [
           {
@@ -570,42 +635,57 @@ export type Database = {
       video_final_decisions: {
         Row: {
           blocking_reasons: Json
+          content_score: number
           copyright_safety_score: number
           created_at: string
           creative_score: number
           decision_reason: string | null
+          evidence_level: string
           final_action: Database["public"]["Enums"]["video_final_action"]
           final_score: number
           id: string
+          is_real_review: boolean
           policy_safety_score: number
           required_edits: Json
+          review_depth_score: number
           video_submission_id: string
+          video_type: string
         }
         Insert: {
           blocking_reasons?: Json
+          content_score?: number
           copyright_safety_score?: number
           created_at?: string
           creative_score?: number
           decision_reason?: string | null
+          evidence_level?: string
           final_action: Database["public"]["Enums"]["video_final_action"]
           final_score?: number
           id?: string
+          is_real_review?: boolean
           policy_safety_score?: number
           required_edits?: Json
+          review_depth_score?: number
           video_submission_id: string
+          video_type?: string
         }
         Update: {
           blocking_reasons?: Json
+          content_score?: number
           copyright_safety_score?: number
           created_at?: string
           creative_score?: number
           decision_reason?: string | null
+          evidence_level?: string
           final_action?: Database["public"]["Enums"]["video_final_action"]
           final_score?: number
           id?: string
+          is_real_review?: boolean
           policy_safety_score?: number
           required_edits?: Json
+          review_depth_score?: number
           video_submission_id?: string
+          video_type?: string
         }
         Relationships: [
           {
@@ -681,7 +761,6 @@ export type Database = {
           approved_count: number
           avg_creative_score: number
           avg_policy_safety_score: number
-          created_at: string | null
           id: string
           low_performance_count: number
           need_edit_count: number
@@ -697,7 +776,6 @@ export type Database = {
           approved_count?: number
           avg_creative_score?: number
           avg_policy_safety_score?: number
-          created_at?: string | null
           id?: string
           low_performance_count?: number
           need_edit_count?: number
@@ -713,7 +791,6 @@ export type Database = {
           approved_count?: number
           avg_creative_score?: number
           avg_policy_safety_score?: number
-          created_at?: string | null
           id?: string
           low_performance_count?: number
           need_edit_count?: number
@@ -757,8 +834,8 @@ export type Database = {
           short_link_at: string | null
           short_link_by: string | null
           source_type: Database["public"]["Enums"]["video_source_type"]
-          status: Database["public"]["Enums"]["video_submission_status"]
           staff_note: string | null
+          status: Database["public"]["Enums"]["video_submission_status"]
           sub_id: string | null
           updated_at: string
         }
@@ -779,6 +856,7 @@ export type Database = {
           drive_file_name?: string | null
           drive_folder_id?: string | null
           drive_web_url?: string | null
+          estimated_commission?: number | null
           file_sha256?: string | null
           id?: string
           original_video_url?: string | null
@@ -790,8 +868,8 @@ export type Database = {
           short_link_at?: string | null
           short_link_by?: string | null
           source_type: Database["public"]["Enums"]["video_source_type"]
-          status?: Database["public"]["Enums"]["video_submission_status"]
           staff_note?: string | null
+          status?: Database["public"]["Enums"]["video_submission_status"]
           sub_id?: string | null
           updated_at?: string
         }
@@ -812,6 +890,7 @@ export type Database = {
           drive_file_name?: string | null
           drive_folder_id?: string | null
           drive_web_url?: string | null
+          estimated_commission?: number | null
           file_sha256?: string | null
           id?: string
           original_video_url?: string | null
@@ -823,8 +902,8 @@ export type Database = {
           short_link_at?: string | null
           short_link_by?: string | null
           source_type?: Database["public"]["Enums"]["video_source_type"]
-          status?: Database["public"]["Enums"]["video_submission_status"]
           staff_note?: string | null
+          status?: Database["public"]["Enums"]["video_submission_status"]
           sub_id?: string | null
           updated_at?: string
         }
@@ -889,15 +968,18 @@ export type Database = {
           status: Database["public"]["Enums"]["video_review_job_status"]
           video_submission_id: string
         }
+        SetofOptions: {
+          from: "*"
+          to: "video_review_jobs"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       current_app_role: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: Database["public"]["Enums"]["user_role"]
       }
-      refresh_video_review_summary: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      refresh_video_review_summary: { Args: never; Returns: undefined }
     }
     Enums: {
       analysis_confidence: "low" | "medium" | "high"
@@ -910,7 +992,15 @@ export type Database = {
         | "REJECT_POLICY_RISK"
         | "REJECT_COPYRIGHT_RISK"
         | "LOW_PERFORMANCE"
-      video_review_job_status: "queued" | "running" | "done" | "failed" | "cancelled"
+        | "REMAKE_AS_REVIEW"
+        | "LOW_REVIEW_QUALITY"
+        | "NEED_RIGHTS_CHECK"
+      video_review_job_status:
+        | "queued"
+        | "running"
+        | "done"
+        | "failed"
+        | "cancelled"
       video_review_stage:
         | "queued"
         | "claimed"
@@ -1057,7 +1147,9 @@ export type CompositeTypes<
   schema: keyof DatabaseWithoutInternals
 }
   ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-  : never
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
 
 export const Constants = {
   public: {
@@ -1072,8 +1164,17 @@ export const Constants = {
         "REJECT_POLICY_RISK",
         "REJECT_COPYRIGHT_RISK",
         "LOW_PERFORMANCE",
+        "REMAKE_AS_REVIEW",
+        "LOW_REVIEW_QUALITY",
+        "NEED_RIGHTS_CHECK",
       ],
-      video_review_job_status: ["queued", "running", "done", "failed", "cancelled"],
+      video_review_job_status: [
+        "queued",
+        "running",
+        "done",
+        "failed",
+        "cancelled",
+      ],
       video_review_stage: [
         "queued",
         "claimed",

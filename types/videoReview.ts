@@ -26,6 +26,31 @@ export const CONFIDENCES: AnalysisConfidence[] = ["low", "medium", "high"];
  */
 export type EvidenceLevel = "video" | "frames" | "images_only" | "text_only";
 
+/** Loại video do AI phân loại (review thật vs sales_deal...). */
+export type ReviewVideoType =
+  | "review"
+  | "sales_deal"
+  | "unboxing"
+  | "demo"
+  | "comparison"
+  | "testimonial"
+  | "unknown";
+
+/** 1 bằng chứng quan sát được theo mốc thời gian (chỉ khi xem được video). */
+export type ObservedEvidence = {
+  timestamp: string;
+  evidence: string;
+  affects: string[];
+};
+
+/** Chẩn đoán "chuyên gia": vì sao video chưa đạt review/viral. */
+export type ExpertDiagnosis = {
+  main_problem: string;
+  why_not_review: string[];
+  why_not_viral_enough: string[];
+  recommended_fix: string[];
+};
+
 /** ----- Output schema của Gemini content analysis ----- */
 export type ContentAnalysisResult = {
   summary: string;
@@ -46,6 +71,17 @@ export type ContentAnalysisResult = {
   /** Dấu hiệu rủi ro chính sách nhìn thấy trực tiếp trong video/ảnh. */
   policy_visible_evidence: string[];
   confidence: AnalysisConfidence;
+
+  /** Mục tiêu chấm = review/chia sẻ/lan tỏa (cố định). */
+  objective: "review_share_viral";
+  /** Loại video AI phân loại. */
+  video_type: ReviewVideoType;
+  /** Có phải review thật không (không phải chỉ cầm SP + hiện giá). */
+  is_real_review: boolean;
+  /** Bằng chứng quan sát theo timestamp. */
+  observed_evidence: ObservedEvidence[];
+  /** Chẩn đoán vì sao chưa đạt review/viral + cách sửa. */
+  expert_diagnosis: ExpertDiagnosis;
 };
 
 /** ----- Output schema của OpenAI policy check ----- */
@@ -61,14 +97,16 @@ export type PolicyCheckResult = {
   confidence: AnalysisConfidence;
 };
 
-/** ----- Output schema của OpenAI creative score (model phần) ----- */
+/** ----- Output schema của OpenAI review/viral score (model phần) ----- */
 export type CreativeScoreModelResult = {
-  hook_score: number;
-  product_clarity_score: number;
-  demo_score: number;
-  trust_score: number;
-  affiliate_fit_score: number;
-  remake_score: number;
+  review_depth_score: number;
+  product_demo_score: number;
+  authenticity_score: number;
+  viral_hook_score: number;
+  retention_score: number;
+  shareability_score: number;
+  sales_conversion_score: number;
+  production_quality_score: number;
   reasons: string[];
   suggested_titles: string[];
   suggested_scripts: string[];
@@ -76,30 +114,40 @@ export type CreativeScoreModelResult = {
   confidence: AnalysisConfidence;
 };
 
-/** Đầu vào tổng hợp cho final-decision (deterministic). */
+/** Đầu vào tổng hợp cho final-decision (deterministic, review/viral). */
 export type FinalDecisionInput = {
-  creative_score: number;
+  /** Bằng chứng thực tế — text_only/images_only ⇒ KHÔNG tự APPROVE. */
+  evidence_level: EvidenceLevel;
+  video_type: ReviewVideoType;
+  is_real_review: boolean;
+
+  review_depth_score: number;
+  product_demo_score: number;
+  authenticity_score: number;
+  viral_hook_score: number;
+  retention_score: number;
+  shareability_score: number;
+  sales_conversion_score: number;
+  production_quality_score: number;
+
   policy_safety_score: number;
   copyright_safety_score: number;
   final_policy_level: RiskLevel;
-  /**
-   * @deprecated Alias tương thích — giữ cho test/cũ. Production truyền
-   * copyright_critical_block (suy từ các nhóm rủi ro cấu hình động).
-   */
-  ip_trademark_risk?: RiskLevel;
-  /** Có nhóm category="policy" + critical_blocks bị chấm "critical" → reject policy. */
+  ip_trademark_risk: RiskLevel;
+  music_copyright_risk?: RiskLevel;
+  ugc_reupload_risk?: RiskLevel;
+  counterfeit_risk?: RiskLevel;
+
+  /** Suy từ nhóm rủi ro động (critical_blocks) — chặn thêm nếu admin thêm nhóm. */
   policy_critical_block?: boolean;
-  /** Có nhóm category="copyright" + critical_blocks bị chấm "critical" → reject copyright. */
   copyright_critical_block?: boolean;
-  /**
-   * Mức bằng chứng thực tế. Nếu text_only/images_only → KHÔNG được tự
-   * APPROVE_RUN_ADS. undefined ⇒ bỏ qua gate (giữ hành vi/test cũ).
-   */
-  evidence_level?: EvidenceLevel;
 };
 
 export type FinalDecisionResult = {
+  /** = content_score (giữ tên cũ cho UI/cột DB legacy). */
   creative_score: number;
+  content_score: number;
+  review_depth_score: number;
   policy_safety_score: number;
   copyright_safety_score: number;
   final_score: number;

@@ -34,6 +34,9 @@ export const FINAL_ACTION_LABELS: Record<VideoFinalAction, string> = {
   REJECT_POLICY_RISK: "Từ chối — rủi ro chính sách",
   REJECT_COPYRIGHT_RISK: "Từ chối — rủi ro bản quyền",
   LOW_PERFORMANCE: "Bán hàng kém",
+  REMAKE_AS_REVIEW: "Làm lại thành video review",
+  LOW_REVIEW_QUALITY: "Review/lan tỏa kém",
+  NEED_RIGHTS_CHECK: "Cần kiểm tra quyền video/nhạc",
 };
 
 /** Có nên lấy video này không — kết luận 1 dòng cực dễ hiểu cho nhân viên. */
@@ -76,6 +79,24 @@ export const FINAL_ACTION_VERDICT: Record<
     headline: "❌ KHÔNG NÊN ƯU TIÊN — video bán hàng kém",
     detail:
       "Video an toàn nhưng khả năng bán hàng thấp (hook yếu, chưa rõ sản phẩm…). Không nên ưu tiên chạy ads.",
+  },
+  REMAKE_AS_REVIEW: {
+    take: "edit",
+    headline: "⚠️ PHẢI LÀM LẠI — video chưa phải review thật",
+    detail:
+      "Video đang giống clip bán hàng / săn deal. Cần thêm demo, trải nghiệm, cảm nhận thật và kết luận rõ hợp với ai.",
+  },
+  LOW_REVIEW_QUALITY: {
+    take: "no",
+    headline: "❌ KHÔNG ƯU TIÊN — nội dung review/lan tỏa yếu",
+    detail:
+      "Video không đủ hook, không đủ demo/độ tin cậy, hoặc không có lý do để người xem lưu/chia sẻ.",
+  },
+  NEED_RIGHTS_CHECK: {
+    take: "edit",
+    headline: "⚠️ CẦN KIỂM TRA QUYỀN — video/nhạc/UGC chưa chắc an toàn",
+    detail:
+      "Cần xác minh quyền dùng video, nhạc, thương hiệu hoặc remake bằng nội dung tự quay trước khi chạy.",
   },
 };
 
@@ -170,6 +191,9 @@ export const FINAL_ACTION_COLORS: Record<VideoFinalAction, BadgeColor> = {
   REJECT_POLICY_RISK: "red",
   REJECT_COPYRIGHT_RISK: "red",
   LOW_PERFORMANCE: "gray",
+  REMAKE_AS_REVIEW: "yellow",
+  LOW_REVIEW_QUALITY: "gray",
+  NEED_RIGHTS_CHECK: "yellow",
 };
 
 export const STATUS_COLORS: Record<VideoSubmissionStatus, BadgeColor> = {

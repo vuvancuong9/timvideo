@@ -3,59 +3,56 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui";
+import type { DecisionThresholds } from "@/lib/video-review/final-decision";
 
-export type Thresholds = {
-  w_creative: number;
-  w_policy: number;
-  w_copyright: number;
-  reject_policy_below: number;
-  reject_copyright_below: number;
-  need_edit_policy_below: number;
-  approve_creative_min: number;
-  approve_policy_min: number;
-  approve_copyright_min: number;
-  remake_creative_min: number;
-};
+type FieldDef = { key: keyof DecisionThresholds; label: string };
 
-type FieldDef = { key: keyof Thresholds; label: string; hint?: string };
-
+// Trọng số content_score (review/lan tỏa) — nên cộng = 1.
 const WEIGHT_FIELDS: FieldDef[] = [
-  { key: "w_creative", label: "Trọng số điểm bán hàng (creative)" },
-  { key: "w_policy", label: "Trọng số an toàn chính sách" },
-  { key: "w_copyright", label: "Trọng số an toàn bản quyền" },
+  { key: "w_review_depth", label: "Trọng số độ sâu review" },
+  { key: "w_viral_hook", label: "Trọng số hook lan tỏa" },
+  { key: "w_retention", label: "Trọng số giữ chân người xem" },
+  { key: "w_authenticity", label: "Trọng số độ chân thật" },
+  { key: "w_product_demo", label: "Trọng số demo sản phẩm" },
+  { key: "w_sales_conversion", label: "Trọng số khả năng chuyển đổi" },
 ];
 
-const THRESHOLD_FIELDS: FieldDef[] = [
-  {
-    key: "reject_policy_below",
-    label: "Từ chối (chính sách) khi điểm chính sách <",
-  },
-  {
-    key: "reject_copyright_below",
-    label: "Từ chối (bản quyền) khi điểm bản quyền <",
-  },
-  {
-    key: "need_edit_policy_below",
-    label: "Cần sửa khi điểm chính sách <",
-  },
-  { key: "approve_creative_min", label: "Duyệt khi điểm bán hàng ≥" },
-  { key: "approve_policy_min", label: "Duyệt khi điểm chính sách ≥" },
+// Cổng chặn policy/bản quyền (hard gate).
+const POLICY_GATE_FIELDS: FieldDef[] = [
+  { key: "reject_policy_below", label: "Từ chối khi điểm policy <" },
+  { key: "reject_copyright_below", label: "Từ chối khi điểm bản quyền <" },
+  { key: "need_edit_policy_below", label: "Cần sửa khi điểm policy <" },
+  { key: "approve_policy_min", label: "Duyệt khi điểm policy ≥" },
   { key: "approve_copyright_min", label: "Duyệt khi điểm bản quyền ≥" },
-  { key: "remake_creative_min", label: "Remake an toàn khi điểm bán hàng ≥" },
 ];
 
-export function PolicyRulesClient({ initial }: { initial: Thresholds }) {
+// Cổng review/nội dung.
+const REVIEW_GATE_FIELDS: FieldDef[] = [
+  { key: "review_depth_reject_below", label: "Làm lại review khi review depth <" },
+  { key: "review_depth_need_edit_below", label: "Cần sửa khi review depth <" },
+  { key: "approve_content_min", label: "Duyệt khi content score ≥" },
+  { key: "approve_review_depth_min", label: "Duyệt khi review depth ≥" },
+  { key: "low_quality_below", label: "Review/viral kém khi content <" },
+  { key: "need_edit_content_below", label: "Cần sửa khi content <" },
+];
+
+export function PolicyRulesClient({ initial }: { initial: DecisionThresholds }) {
   const router = useRouter();
-  const [t, setT] = useState<Thresholds>(initial);
+  const [t, setT] = useState<DecisionThresholds>(initial);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
 
   const weightSum =
-    Number(t.w_creative) + Number(t.w_policy) + Number(t.w_copyright);
+    Number(t.w_review_depth) +
+    Number(t.w_viral_hook) +
+    Number(t.w_retention) +
+    Number(t.w_authenticity) +
+    Number(t.w_product_demo) +
+    Number(t.w_sales_conversion);
   const weightWarn = Math.abs(weightSum - 1) > 0.001;
 
-  function set(key: keyof Thresholds, value: string) {
+  function set(key: keyof DecisionThresholds, value: string) {
     setOk(false);
     setT((p) => ({ ...p, [key]: value === "" ? 0 : Number(value) }));
   }
@@ -76,7 +73,7 @@ export function PolicyRulesClient({ initial }: { initial: Thresholds }) {
           [j.error, j.detail].filter(Boolean).join(" — ") || "Lưu thất bại",
         );
       }
-      setT(j.thresholds as Thresholds);
+      setT(j.thresholds as DecisionThresholds);
       setOk(true);
       router.refresh();
     } catch (e) {
@@ -99,13 +96,19 @@ export function PolicyRulesClient({ initial }: { initial: Thresholds }) {
         </p>
       )}
 
+      <p className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+        Policy & bản quyền là <b>CỔNG CHẶN</b> — KHÔNG cộng trung bình để cứu
+        điểm. <b>content_score</b> chỉ đo chất lượng review/lan tỏa và{" "}
+        <b>final_score = content_score</b>. Video chưa phải review thật (sales_deal)
+        hoặc chưa có video thật sẽ không được tự duyệt chạy ads.
+      </p>
+
       <Card>
         <h2 className="mb-1 font-semibold text-gray-900">
-          Trọng số điểm tổng (final_score)
+          Trọng số nội dung review/lan tỏa (content_score)
         </h2>
         <p className="mb-3 text-xs text-gray-500">
-          final_score = creative×w_creative + policy×w_policy +
-          copyright×w_copyright. Tổng 3 trọng số nên bằng 1.
+          content_score = tổng có trọng số 6 tiêu chí. Tổng 6 trọng số nên bằng 1.
         </p>
         <div className="grid gap-3 sm:grid-cols-3">
           {WEIGHT_FIELDS.map((f) => (
@@ -127,13 +130,36 @@ export function PolicyRulesClient({ initial }: { initial: Thresholds }) {
       </Card>
 
       <Card>
-        <h2 className="mb-1 font-semibold text-gray-900">Ngưỡng quyết định</h2>
+        <h2 className="mb-1 font-semibold text-gray-900">
+          Cổng chặn Policy / Bản quyền
+        </h2>
         <p className="mb-3 text-xs text-gray-500">
-          Thứ tự xét: Từ chối chính sách → Từ chối bản quyền → Cần sửa → Duyệt
-          chạy ads → Remake an toàn → Bán hàng kém. Điểm theo thang 0–100.
+          Điểm theo thang 0–100. Dưới ngưỡng từ chối → REJECT bất kể nội dung tốt
+          tới đâu.
         </p>
         <div className="grid gap-3 sm:grid-cols-2">
-          {THRESHOLD_FIELDS.map((f) => (
+          {POLICY_GATE_FIELDS.map((f) => (
+            <NumField
+              key={f.key}
+              label={f.label}
+              value={t[f.key]}
+              step="1"
+              onChange={(v) => set(f.key, v)}
+            />
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <h2 className="mb-1 font-semibold text-gray-900">
+          Cổng review / nội dung
+        </h2>
+        <p className="mb-3 text-xs text-gray-500">
+          review_depth thấp → REMAKE_AS_REVIEW. content_score thấp →
+          LOW_REVIEW_QUALITY. Đạt đủ ngưỡng + an toàn → APPROVE.
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {REVIEW_GATE_FIELDS.map((f) => (
             <NumField
               key={f.key}
               label={f.label}
