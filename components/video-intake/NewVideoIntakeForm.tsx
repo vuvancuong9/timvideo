@@ -371,11 +371,7 @@ export function NewVideoIntakeForm({
       setError(v);
       return;
     }
-    // BẮT BUỘC: phải chấm điểm thử xong mới cho gửi.
-    if (!preview) {
-      setError('Vui lòng bấm "🎯 Chấm điểm thử ngay" trước khi gửi video.');
-      return;
-    }
+    // Chấm điểm thử là TUỲ CHỌN — không bắt buộc trước khi gửi.
     setSubmitting(true);
     try {
       let primary = null;
@@ -396,14 +392,17 @@ export function NewVideoIntakeForm({
           staff_note: note || null,
           drive: primary,
           attachments,
-          // Gửi kèm điểm đã chấm thử để lưu DB + ghi Sheet ngay (khỏi chờ worker).
-          preview_scores: {
-            creative_score: preview.creative.creative_score,
-            policy_safety_score: preview.policy.policy_safety_score,
-            copyright_safety_score: preview.policy.copyright_safety_score,
-            final_score: preview.decision.final_score,
-            final_action: preview.decision.final_action,
-          },
+          // Nếu ĐÃ chấm thử thì gửi kèm điểm để ghi Sheet ngay; không thì để
+          // null, worker nền sẽ tự chấm sau (không bắt buộc chấm trước khi gửi).
+          preview_scores: preview
+            ? {
+                creative_score: preview.creative.creative_score,
+                policy_safety_score: preview.policy.policy_safety_score,
+                copyright_safety_score: preview.policy.copyright_safety_score,
+                final_score: preview.decision.final_score,
+                final_action: preview.decision.final_action,
+              }
+            : null,
         }),
       });
       const json = await res.json();
@@ -690,16 +689,15 @@ export function NewVideoIntakeForm({
         </button>
         <button
           type="submit"
-          disabled={submitDisabled || !preview}
+          disabled={submitDisabled}
           className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
-          title={!preview ? "Hãy chấm điểm thử trước khi gửi" : undefined}
         >
           {submitting ? "Đang lưu…" : "Gửi video"}
         </button>
         <span className="text-xs text-gray-400">
           {preview
-            ? "Đã chấm điểm — bạn có thể gửi video."
-            : "Bắt buộc bấm “Chấm điểm thử ngay” trước, rồi mới gửi được."}
+            ? "Đã chấm điểm — có thể gửi."
+            : "Có thể gửi luôn, hoặc bấm “Chấm điểm thử ngay” để xem trước (tuỳ chọn). Worker sẽ tự chấm sau."}
         </span>
       </div>
 
