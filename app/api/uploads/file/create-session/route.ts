@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireApi } from "@/lib/auth/session";
-import { createSignedVideoUpload } from "@/lib/storage";
 import {
   isDriveOAuthConnected,
   createOAuthResumableSession,
@@ -12,7 +11,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 // POST /api/uploads/file/create-session
-// Trả 'drive' nếu admin đã kết nối Google Drive cá nhân; nếu chưa, fallback 'storage'.
+// File (video/ảnh) tải THẲNG lên Google Drive cá nhân — KHÔNG lưu Supabase Storage.
+// Bắt buộc đã kết nối Drive OAuth; chưa kết nối → báo lỗi rõ (không fallback).
 // accountant KHÔNG được upload.
 export async function POST(req: NextRequest) {
   try {
@@ -30,36 +30,26 @@ export async function POST(req: NextRequest) {
     const fileName = (body.fileName ?? "").trim();
     if (!fileName) throw new ApiError(400, "Thiếu tên file");
 
-    if (await isDriveOAuthConnected()) {
-      const { uploadUrl, folderId } = await createOAuthResumableSession({
-        fileName,
-        mimeType: body.mimeType || "application/octet-stream",
-        fileSize: body.fileSize,
-        origin: req.nextUrl.origin,
-      });
-      await writeAuditLog({
-        actorId: session.userId,
-        action: "upload.create_session",
-        entityType: "drive_oauth",
-        after: { folderId },
-      });
-      return jsonOk({ mode: "drive", uploadUrl });
+    if (!(await isDriveOAuthConnected())) {
+      throw new ApiError(
+        400,
+        "Chưa kết nối Google Drive cá nhân. Video/ảnh phải tải thẳng lên Drive (không lưu Supabase). Vào /admin/settings → nhóm 'Google Drive (cá nhân)' để kết nối rồi thử lại.",
+        "DRIVE_NOT_CONNECTED",
+      );
     }
-
-    // Fallback: Supabase Storage
-    const signed = await createSignedVideoUpload({
-      userId: session.userId,
+    const { uploadUrl, folderId } = await createOAuthResumableSession({
       fileName,
-      baseName: body.baseName ?? null,
-      index: body.index,
+      mimeType: body.mimeType || "application/octet-stream",
+      fileSize: body.fileSize,
+      origin: req.nextUrl.origin,
     });
     await writeAuditLog({
       actorId: session.userId,
       action: "upload.create_session",
-      entityType: "storage_upload",
-      after: { path: signed.path },
+      entityType: "drive_oauth",
+      after: { folderId },
     });
-    return jsonOk({ mode: "storage", ...signed });
+    return jsonOk({ mode: "drive", uploadUrl });
   } catch (e) {
     return handleApiError(e);
   }

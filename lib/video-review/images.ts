@@ -3,6 +3,7 @@
  * Server-only.
  */
 import type { SubmissionAttachment } from "@/types/videoIntake";
+import { toDirectFetchUrl } from "@/lib/video-review/gemini-video-input";
 
 export type GeminiImagePart = { data: string; mimeType: string };
 
@@ -45,12 +46,26 @@ export async function loadImagePartsFromAttachments(
   const parts: GeminiImagePart[] = [];
   for (const a of imgs) {
     try {
-      const res = await fetch(a.web_url as string);
+      // Link Google Drive dạng /view trả HTML → đổi sang link tải trực tiếp.
+      const res = await fetch(toDirectFetchUrl(a.web_url as string));
       if (!res.ok) continue;
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      // Bỏ qua nếu trả HTML/JSON (vd Drive chưa public) — không gửi rác cho Gemini.
+      if (
+        ct.startsWith("text/") ||
+        ct.includes("html") ||
+        ct.includes("application/json")
+      ) {
+        continue;
+      }
       const arr = new Uint8Array(await res.arrayBuffer());
       if (arr.byteLength > MAX_IMAGE_BYTES) continue;
       const mime =
-        a.mime_type || res.headers.get("content-type") || "image/jpeg";
+        a.mime_type && a.mime_type.startsWith("image/")
+          ? a.mime_type
+          : ct.startsWith("image/")
+            ? ct
+            : "image/jpeg";
       parts.push({ data: Buffer.from(arr).toString("base64"), mimeType: mime });
     } catch {
       // bỏ qua ảnh lỗi
