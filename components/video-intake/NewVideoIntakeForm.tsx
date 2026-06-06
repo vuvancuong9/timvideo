@@ -371,6 +371,13 @@ export function NewVideoIntakeForm({
       setError(v);
       return;
     }
+    // BẮT BUỘC: gửi phải có CẢ link video gốc VÀ file video tải lên.
+    if (!hasLink || !hasVideoFile) {
+      setError(
+        "Phải có CẢ link video gốc VÀ file video tải lên mới gửi được video.",
+      );
+      return;
+    }
     // Chấm điểm thử là TUỲ CHỌN — không bắt buộc trước khi gửi.
     setSubmitting(true);
     try {
@@ -537,7 +544,8 @@ export function NewVideoIntakeForm({
             </button>
           </div>
           <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500">
-            Điền link và/hoặc tải file đều được — nút trên chọn nguồn để AI chấm.{" "}
+            Để GỬI cần CẢ link video gốc + file video. Nút trên chọn nguồn để AI
+            chấm.{" "}
             {inputMode === "file"
               ? "Đang chấm theo FILE video tải lên (AI xem video thật, chính xác nhất)."
               : "Đang chấm theo LINK. YouTube: AI xem trực tiếp; TikTok/Facebook chỉ SƠ BỘ — muốn chính xác hãy chọn “File video tải lên”."}
@@ -689,15 +697,20 @@ export function NewVideoIntakeForm({
         </button>
         <button
           type="submit"
-          disabled={submitDisabled}
+          disabled={submitDisabled || !hasLink || !hasVideoFile}
           className="rounded-lg bg-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
+          title={
+            !hasLink || !hasVideoFile
+              ? "Cần cả link video gốc và file video mới gửi được"
+              : undefined
+          }
         >
           {submitting ? "Đang lưu…" : "Gửi video"}
         </button>
         <span className="text-xs text-gray-400">
-          {preview
-            ? "Đã chấm điểm — có thể gửi."
-            : "Có thể gửi luôn, hoặc bấm “Chấm điểm thử ngay” để xem trước (tuỳ chọn). Worker sẽ tự chấm sau."}
+          {!hasLink || !hasVideoFile
+            ? "Cần CẢ link video gốc + file video tải lên mới gửi được (chấm điểm thử là tuỳ chọn)."
+            : "Đủ link + file — có thể gửi (worker sẽ tự chấm), hoặc bấm “Chấm điểm thử ngay” để xem trước."}
         </span>
       </div>
 
