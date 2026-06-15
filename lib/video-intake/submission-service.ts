@@ -5,7 +5,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { canonicalizeForDedup } from "@/lib/video-intake/duplicate";
+import { resolveAndCanonicalize } from "@/lib/video-intake/duplicate";
 import {
   accountSlug,
   vnDateDDMM,
@@ -64,13 +64,16 @@ export async function createSubmissionWithJob(
     throw new ApiError(400, "Cần link video gốc hoặc file đã tải lên");
   }
 
-  // Canonicalize ở server (lớp chống trùng quyết định nằm ở DB unique index).
+  // Canonicalize ở server + resolve link rút gọn (lớp chống trùng quyết định
+  // nằm ở DB unique index: video_external_id mạnh nhất, canonical_video_hash dự phòng).
   let canonicalUrl: string | null = null;
   let canonicalHash: string | null = null;
+  let externalId: string | null = null;
   if (rawVideoUrl) {
-    const c = canonicalizeForDedup(rawVideoUrl);
+    const c = await resolveAndCanonicalize(rawVideoUrl);
     canonicalUrl = c.canonicalUrl;
     canonicalHash = c.canonicalHash;
+    externalId = c.externalId;
   }
 
   // Sub ID chính thức cấp ở server (không tin client). Dùng admin client để
@@ -94,6 +97,7 @@ export async function createSubmissionWithJob(
       original_video_url: rawVideoUrl || null,
       canonical_video_url: canonicalUrl,
       canonical_video_hash: canonicalHash,
+      video_external_id: externalId,
       drive_file_id: input.drive?.driveFileId ?? null,
       drive_file_name: input.drive?.driveFileName ?? null,
       drive_web_url: input.drive?.driveWebUrl ?? null,
@@ -122,8 +126,11 @@ export async function createSubmissionWithJob(
     }
     const code = (insErr as { code?: string; message?: string }).code;
     const msg = (insErr as { message?: string }).message ?? "";
-    // trùng canonical video -> báo duplicate ngay (không retry)
-    if (code === "23505" && msg.includes("canonical")) {
+    // trùng video (theo ID gốc HOẶC canonical hash) -> báo duplicate ngay (không retry)
+    if (
+      code === "23505" &&
+      (msg.includes("canonical") || msg.includes("external_id"))
+    ) {
       throw new ApiError(409, "Video này đã tồn tại trong hệ thống", "DUPLICATE");
     }
     // trùng sub_id -> retry với số kế tiếp

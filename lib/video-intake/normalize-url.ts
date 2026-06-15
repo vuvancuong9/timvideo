@@ -130,6 +130,50 @@ function extractYouTubeId(u: URL, host: string): string | null {
   return null;
 }
 
+/** ID số của video/photo TikTok từ path (/@user/video/<id>, /video/<id>, /v/<id>). */
+function extractTikTokId(u: URL): string | null {
+  const m = u.pathname.match(/\/(?:@[^/]+\/)?(?:video|photo|v)\/(\d+)/i);
+  return m ? m[1] : null;
+}
+
+/** ID số của video/reel Facebook (reel/videos/watch?v=/story_fbid). */
+function extractFacebookId(u: URL): string | null {
+  const v = u.searchParams.get("v");
+  if (v && /^\d+$/.test(v)) return v;
+  const story = u.searchParams.get("story_fbid");
+  if (story && /^\d+$/.test(story)) return story;
+  const m = u.pathname.match(/\/(?:reels?|videos?|watch)\/(\d+)/i);
+  return m ? m[1] : null;
+}
+
+/**
+ * Khóa định danh video gốc dạng `platform:id` (TikTok/Facebook/YouTube).
+ * Đây là khóa chống trùng MẠNH nhất: ổn định dù URL khác định dạng, đổi
+ * @username hay thêm tham số. Trả null khi không trích được ID (URL khác,
+ * link rút gọn chưa resolve, profile...) — lúc đó dùng canonical URL hash.
+ */
+export function videoExternalId(rawUrl: string): string | null {
+  const u = parseUrl(rawUrl);
+  if (!u) return null;
+  const host = normalizeHost(u.hostname);
+  switch (sourceFromHost(host)) {
+    case "youtube_url": {
+      const id = extractYouTubeId(u, host);
+      return id ? `youtube:${id}` : null;
+    }
+    case "tiktok_url": {
+      const id = extractTikTokId(u);
+      return id ? `tiktok:${id}` : null;
+    }
+    case "facebook_url": {
+      const id = extractFacebookId(u);
+      return id ? `facebook:${id}` : null;
+    }
+    default:
+      return null;
+  }
+}
+
 /**
  * Canonical URL ổn định cho chống trùng.
  * - trim, lowercase hostname, bỏ www/m, bỏ tracking params

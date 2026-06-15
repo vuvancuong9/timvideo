@@ -838,6 +838,7 @@ export type Database = {
           status: Database["public"]["Enums"]["video_submission_status"]
           sub_id: string | null
           updated_at: string
+          video_external_id: string | null
         }
         Insert: {
           admin_note?: string | null
@@ -872,6 +873,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["video_submission_status"]
           sub_id?: string | null
           updated_at?: string
+          video_external_id?: string | null
         }
         Update: {
           admin_note?: string | null
@@ -906,6 +908,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["video_submission_status"]
           sub_id?: string | null
           updated_at?: string
+          video_external_id?: string | null
         }
         Relationships: [
           {

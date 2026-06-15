@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   detectVideoSource,
   canonicalizeVideoUrl,
+  videoExternalId,
 } from "@/lib/video-intake/normalize-url";
 import { canonicalizeForDedup } from "@/lib/video-intake/duplicate";
 
@@ -76,5 +77,61 @@ describe("video khác nhau -> hash khác", () => {
     const a = canonicalizeForDedup("https://youtu.be/aaa");
     const b = canonicalizeForDedup("https://youtu.be/bbb");
     expect(a.canonicalHash).not.toBe(b.canonicalHash);
+  });
+});
+
+describe("videoExternalId — khóa ID video gốc (Bậc 1)", () => {
+  it("TikTok: trích ID số bất kể @username / query / mobile", () => {
+    const id = "tiktok:7555696123738901780";
+    expect(
+      videoExternalId(
+        "https://www.tiktok.com/@_damthanhan_/video/7555696123738901780?_r=1&_t=ZS-9",
+      ),
+    ).toBe(id);
+    expect(
+      videoExternalId("https://m.tiktok.com/@nguoikhac/video/7555696123738901780"),
+    ).toBe(id);
+    // Cùng ID dù khác @username -> cùng khóa (lỗ hổng cũ của dedup theo path).
+    expect(videoExternalId("https://www.tiktok.com/video/7555696123738901780")).toBe(
+      id,
+    );
+  });
+
+  it("Facebook: reel / watch?v / videos -> facebook:id", () => {
+    expect(videoExternalId("https://www.facebook.com/reel/1002084012178097")).toBe(
+      "facebook:1002084012178097",
+    );
+    expect(
+      videoExternalId("https://www.facebook.com/watch?v=998877&fbclid=x"),
+    ).toBe("facebook:998877");
+    expect(
+      videoExternalId("https://www.facebook.com/SomePage/videos/123456789"),
+    ).toBe("facebook:123456789");
+  });
+
+  it("YouTube: watch?v / youtu.be / shorts cùng ID", () => {
+    expect(videoExternalId("https://www.youtube.com/watch?v=abc123&feature=x")).toBe(
+      "youtube:abc123",
+    );
+    expect(videoExternalId("https://youtu.be/abc123?si=token")).toBe(
+      "youtube:abc123",
+    );
+    expect(videoExternalId("https://www.youtube.com/shorts/abc123")).toBe(
+      "youtube:abc123",
+    );
+  });
+
+  it("URL không trích được ID -> null (dùng canonical hash)", () => {
+    expect(videoExternalId("https://vt.tiktok.com/ZSQd3eq2w/")).toBeNull();
+    expect(videoExternalId("https://vimeo.com/12345")).toBeNull();
+    expect(videoExternalId("https://www.tiktok.com/@someuser")).toBeNull();
+    expect(videoExternalId("không-phải-url")).toBeNull();
+  });
+
+  it("canonicalizeForDedup kèm externalId cho video nền tảng", () => {
+    const c = canonicalizeForDedup(
+      "https://www.tiktok.com/@u/video/999?_t=abc",
+    );
+    expect(c.externalId).toBe("tiktok:999");
   });
 });
