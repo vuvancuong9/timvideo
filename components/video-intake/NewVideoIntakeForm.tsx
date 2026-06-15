@@ -10,6 +10,7 @@ import {
   PreviewResultPanel,
   type PreviewData,
 } from "@/components/video-review/PreviewResultPanel";
+import { SearchableSelect } from "@/components/SearchableSelect";
 import type { PolicyRiskGroup } from "@/lib/video-review/policy-groups-config";
 import type {
   VideoSourceType,
@@ -74,6 +75,11 @@ export function NewVideoIntakeForm({
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [riskGroups, setRiskGroups] = useState<PolicyRiskGroup[]>([]);
   const [subId, setSubId] = useState<string>("");
+
+  const categoryOptions = useMemo(
+    () => categories.map((c) => ({ value: c.id, label: c.name })),
+    [categories],
+  );
 
   // Bắt buộc chấm điểm xong mới cho gửi. Khi đổi thông tin ảnh hưởng điểm thì
   // preview cũ không còn đúng -> xóa, buộc chấm lại.
@@ -371,6 +377,17 @@ export function NewVideoIntakeForm({
       setError(v);
       return;
     }
+    // BẮT BUỘC khi gửi: giá phải trên 10.000đ.
+    const priceNum = Number(price);
+    if (!Number.isFinite(priceNum) || priceNum <= 10000) {
+      setError("Giá sản phẩm phải trên 10.000đ.");
+      return;
+    }
+    // BẮT BUỘC khi gửi: phải chọn danh mục sản phẩm.
+    if (!categoryId) {
+      setError("Vui lòng chọn danh mục sản phẩm.");
+      return;
+    }
     // BẮT BUỘC: gửi phải có CẢ link video gốc VÀ file video tải lên.
     if (!hasLink || !hasVideoFile) {
       setError(
@@ -494,19 +511,14 @@ export function NewVideoIntakeForm({
           Hoa hồng dự kiến:{" "}
           <span className="font-semibold">{formatCurrency(estimated)}</span>
         </div>
-        <Field label="Danh mục sản phẩm">
-          <select
+        <Field label="Danh mục sản phẩm" required>
+          <SearchableSelect
             value={categoryId}
-            onChange={(e) => setCategoryId(e.target.value)}
-            className={inputClass}
-          >
-            <option value="">— Chọn danh mục —</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
+            onChange={setCategoryId}
+            options={categoryOptions}
+            placeholder="— Chọn danh mục —"
+            emptyText="Không tìm thấy danh mục"
+          />
         </Field>
       </fieldset>
 
