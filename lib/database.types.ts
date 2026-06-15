@@ -120,6 +120,30 @@ export type Database = {
           },
         ]
       }
+      dedup_seed_videos: {
+        Row: {
+          canonical_video_hash: string
+          created_at: string
+          id: string
+          source: string | null
+          video_external_id: string | null
+        }
+        Insert: {
+          canonical_video_hash: string
+          created_at?: string
+          id?: string
+          source?: string | null
+          video_external_id?: string | null
+        }
+        Update: {
+          canonical_video_hash?: string
+          created_at?: string
+          id?: string
+          source?: string | null
+          video_external_id?: string | null
+        }
+        Relationships: []
+      }
       facebook_pages: {
         Row: {
           affiliate_account_id: string

@@ -32,10 +32,21 @@ function isAllowedFinal(host: string): boolean {
   return ALLOWED_FINAL_HOSTS.some((d) => h === d || h.endsWith(`.${d}`));
 }
 
-/** Có phải link rút gọn cần resolve không. */
+/** Có phải link rút gọn / link share cần resolve không. */
 export function isShortLink(rawUrl: string): boolean {
-  const h = hostOf(rawUrl);
-  return h ? SHORT_LINK_HOSTS.has(h) : false;
+  let u: URL;
+  try {
+    const s = /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+    u = new URL(s);
+  } catch {
+    return false;
+  }
+  const host = u.hostname.toLowerCase().replace(/^www\./, "");
+  if (SHORT_LINK_HOSTS.has(host)) return true;
+  // Link share Facebook: facebook.com/share/{v,r,p}/<token> -> /reel|watch thật.
+  const fb =
+    host === "facebook.com" || host.endsWith(".facebook.com") || host === "fb.com";
+  return fb && /^\/share\//i.test(u.pathname);
 }
 
 /**

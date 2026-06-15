@@ -61,6 +61,8 @@ export type DuplicateCheckResult = {
   ok: true;
   duplicate: boolean;
   existing?: DuplicateExisting;
+  /** Trùng do khớp kho "video đã làm trước đó" (13 sheet lịch sử), không phải submission. */
+  from_seed?: boolean;
   canonical_video_url: string;
   canonical_video_hash: string;
   source_type: VideoSourceType;

@@ -5,6 +5,7 @@ import {
   videoExternalId,
 } from "@/lib/video-intake/normalize-url";
 import { canonicalizeForDedup } from "@/lib/video-intake/duplicate";
+import { isShortLink } from "@/lib/video-intake/resolve-url";
 
 describe("detectVideoSource", () => {
   it("nhận diện đúng nguồn", () => {
@@ -133,5 +134,35 @@ describe("videoExternalId — khóa ID video gốc (Bậc 1)", () => {
       "https://www.tiktok.com/@u/video/999?_t=abc",
     );
     expect(c.externalId).toBe("tiktok:999");
+  });
+
+  it("TikTok thiếu @username (@/video/id) vẫn trích được", () => {
+    expect(
+      videoExternalId("https://www.tiktok.com/@/video/7576871688449658128"),
+    ).toBe("tiktok:7576871688449658128");
+  });
+
+  it("Facebook reel nằm nhầm ở cột TikTok vẫn ra facebook:id", () => {
+    expect(videoExternalId("https://www.facebook.com/reel/831756516670088")).toBe(
+      "facebook:831756516670088",
+    );
+  });
+});
+
+describe("isShortLink — link cần resolve ở server", () => {
+  it("nhận link rút gọn TikTok + fb.watch", () => {
+    expect(isShortLink("https://vt.tiktok.com/ZSQd3eq2w/")).toBe(true);
+    expect(isShortLink("https://vm.tiktok.com/abc/")).toBe(true);
+    expect(isShortLink("https://fb.watch/xyz/")).toBe(true);
+  });
+  it("nhận link share Facebook (/share/v|r/...)", () => {
+    expect(isShortLink("https://www.facebook.com/share/v/192dGXxhha/")).toBe(true);
+    expect(isShortLink("https://www.facebook.com/share/r/1BVDfeYJtU/")).toBe(true);
+    expect(isShortLink("https://web.facebook.com/share/v/abc/")).toBe(true);
+  });
+  it("KHÔNG coi link đầy đủ là link rút gọn", () => {
+    expect(isShortLink("https://www.tiktok.com/@u/video/123")).toBe(false);
+    expect(isShortLink("https://www.facebook.com/reel/123")).toBe(false);
+    expect(isShortLink("https://youtu.be/abc")).toBe(false);
   });
 });

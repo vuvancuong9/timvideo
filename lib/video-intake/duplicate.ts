@@ -106,9 +106,12 @@ export async function checkDuplicateByUrl(
   }
 
   if (!data) {
+    // Không trùng submission nào -> tra thêm kho "video đã làm trước đó".
+    const inSeed = await seedHasVideo(externalId, canonicalHash);
     return {
       ok: true,
-      duplicate: false,
+      duplicate: inSeed,
+      from_seed: inSeed,
       canonical_video_url: canonicalUrl,
       canonical_video_hash: canonicalHash,
       source_type: sourceType,
@@ -129,6 +132,36 @@ export async function checkDuplicateByUrl(
     canonical_video_hash: canonicalHash,
     source_type: sourceType,
   };
+}
+
+/**
+ * Có nằm trong kho "video đã làm trước đó" (dedup_seed_videos) không.
+ * Khớp ID video gốc trước, rồi tới canonical hash. Kho này tĩnh nên check ở
+ * tầng app là an toàn (không có đua ghi).
+ */
+export async function seedHasVideo(
+  externalId: string | null,
+  canonicalHash: string,
+): Promise<boolean> {
+  const admin = createSupabaseAdminClient();
+  if (externalId) {
+    const r = await admin
+      .from("dedup_seed_videos")
+      .select("id")
+      .eq("video_external_id", externalId)
+      .limit(1)
+      .maybeSingle();
+    if (r.error) throw r.error;
+    if (r.data) return true;
+  }
+  const r2 = await admin
+    .from("dedup_seed_videos")
+    .select("id")
+    .eq("canonical_video_hash", canonicalHash)
+    .limit(1)
+    .maybeSingle();
+  if (r2.error) throw r2.error;
+  return Boolean(r2.data);
 }
 
 /** Kiểm tra trùng theo file_sha256 (cảnh báo, không bắt buộc chặn). */

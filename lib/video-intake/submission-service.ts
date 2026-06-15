@@ -5,7 +5,10 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
-import { resolveAndCanonicalize } from "@/lib/video-intake/duplicate";
+import {
+  resolveAndCanonicalize,
+  seedHasVideo,
+} from "@/lib/video-intake/duplicate";
 import {
   accountSlug,
   vnDateDDMM,
@@ -74,6 +77,15 @@ export async function createSubmissionWithJob(
     canonicalUrl = c.canonicalUrl;
     canonicalHash = c.canonicalHash;
     externalId = c.externalId;
+  }
+
+  // Chặn nếu video đã có trong kho "đã làm trước đó" (13 sheet lịch sử).
+  if (canonicalHash && (await seedHasVideo(externalId, canonicalHash))) {
+    throw new ApiError(
+      409,
+      "Video này đã làm trước đó (có trong danh sách cũ)",
+      "DUPLICATE",
+    );
   }
 
   // Sub ID chính thức cấp ở server (không tin client). Dùng admin client để

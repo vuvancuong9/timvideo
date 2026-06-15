@@ -166,10 +166,14 @@ export function NewVideoIntakeForm({
         lastChecked.current = url;
         if (json.duplicate) {
           setDuplicate(true);
-          const by = json.existing?.created_by_name
-            ? ` (người nhập: ${json.existing.created_by_name})`
-            : "";
-          setDupMsg(`Video này đã có người nhập rồi${by}.`);
+          if (json.from_seed) {
+            setDupMsg("Video này đã làm trước đó (có trong danh sách cũ).");
+          } else {
+            const by = json.existing?.created_by_name
+              ? ` (người nhập: ${json.existing.created_by_name})`
+              : "";
+            setDupMsg(`Video này đã có người nhập rồi${by}.`);
+          }
         }
       } catch {
         // server vẫn chặn khi submit
