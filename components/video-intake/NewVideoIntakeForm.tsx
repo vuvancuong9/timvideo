@@ -184,8 +184,12 @@ export function NewVideoIntakeForm({
     return () => clearTimeout(t);
   }, [videoUrl]);
 
-  /** PUT file lên resumable URL của Drive, trả fileId. */
-  function putToDrive(url: string, f: File): Promise<string> {
+  /** PUT file lên resumable URL của Drive, trả fileId. onProgress: % đã tải. */
+  function putToDrive(
+    url: string,
+    f: File,
+    onProgress?: (pct: number) => void,
+  ): Promise<string> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open("PUT", url, true);
@@ -193,6 +197,13 @@ export function NewVideoIntakeForm({
         "Content-Type",
         f.type || "application/octet-stream",
       );
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            onProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        };
+      }
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
@@ -213,7 +224,11 @@ export function NewVideoIntakeForm({
    * Upload 1 file. Tự chọn nơi lưu: Google Drive (nếu admin đã kết nối) hoặc
    * Supabase Storage (fallback). Đặt tên theo Sub ID.
    */
-  async function uploadOne(f: File, index: number): Promise<UploadedFile> {
+  async function uploadOne(
+    f: File,
+    index: number,
+    onProgress?: (pct: number) => void,
+  ): Promise<UploadedFile> {
     const cached = uploadCache.current.get(f);
     if (cached) return cached;
 
@@ -238,7 +253,7 @@ export function NewVideoIntakeForm({
 
     let meta: UploadedFile;
     if (sessionJson.mode === "drive") {
-      const fileId = await putToDrive(sessionJson.uploadUrl, f);
+      const fileId = await putToDrive(sessionJson.uploadUrl, f, onProgress);
       const compRes = await fetch("/api/uploads/file/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -288,8 +303,13 @@ export function NewVideoIntakeForm({
     let primaryVideo: UploadedFile | null = null;
     let done = 0;
     for (const f of files) {
-      setUploadInfo(`Đang tải lên ${done + 1}/${files.length}: ${f.name}`);
-      const meta = await uploadOne(f, done + 1);
+      const label = `Đang tải lên ${done + 1}/${files.length}: ${f.name}`;
+      setUploadInfo(`${label} — 0%`);
+      const meta = await uploadOne(f, done + 1, (pct) =>
+        setUploadInfo(
+          pct >= 100 ? `${label} — đang hoàn tất…` : `${label} — ${pct}%`,
+        ),
+      );
       attachments.push({
         drive_file_id: "",
         name: meta.name,
@@ -381,13 +401,20 @@ export function NewVideoIntakeForm({
       setError(v);
       return;
     }
-    // BẮT BUỘC khi gửi: giá phải trên 10.000đ.
-    const priceNum = Number(price);
-    if (!Number.isFinite(priceNum) || priceNum <= 10000) {
-      setError("Giá sản phẩm phải trên 10.000đ.");
+    // BẮT BUỘC khi gửi: giá (trên 1.000đ), % hoa hồng, danh mục.
+    if (!price.trim()) {
+      setError("Vui lòng nhập giá sản phẩm.");
       return;
     }
-    // BẮT BUỘC khi gửi: phải chọn danh mục sản phẩm.
+    const priceNum = Number(price);
+    if (!Number.isFinite(priceNum) || priceNum <= 1000) {
+      setError("Giá sản phẩm phải trên 1.000đ.");
+      return;
+    }
+    if (!percent.trim() || !Number.isFinite(Number(percent))) {
+      setError("Vui lòng nhập % hoa hồng.");
+      return;
+    }
     if (!categoryId) {
       setError("Vui lòng chọn danh mục sản phẩm.");
       return;
