@@ -68,7 +68,9 @@ export function NewVideoIntakeForm({
   const [duplicate, setDuplicate] = useState(false);
   const [dupMsg, setDupMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [uploadInfo, setUploadInfo] = useState<string | null>(null);
+  const [upload, setUpload] = useState<{ label: string; pct: number } | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
 
   const [scoring, setScoring] = useState(false);
@@ -304,11 +306,9 @@ export function NewVideoIntakeForm({
     let done = 0;
     for (const f of files) {
       const label = `Đang tải lên ${done + 1}/${files.length}: ${f.name}`;
-      setUploadInfo(`${label} — 0%`);
+      setUpload({ label, pct: 0 });
       const meta = await uploadOne(f, done + 1, (pct) =>
-        setUploadInfo(
-          pct >= 100 ? `${label} — đang hoàn tất…` : `${label} — ${pct}%`,
-        ),
+        setUpload({ label, pct: Math.min(pct, 100) }),
       );
       attachments.push({
         drive_file_id: "",
@@ -320,7 +320,7 @@ export function NewVideoIntakeForm({
       if (meta.kind === "video" && !primaryVideo) primaryVideo = meta;
       done += 1;
     }
-    setUploadInfo(null);
+    setUpload(null);
     const primary = primaryVideo
       ? {
           driveFileId: null as null,
@@ -385,7 +385,7 @@ export function NewVideoIntakeForm({
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
     } finally {
       setScoring(false);
-      setUploadInfo(null);
+      setUpload(null);
     }
   }
 
@@ -469,7 +469,7 @@ export function NewVideoIntakeForm({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
       setSubmitting(false);
-      setUploadInfo(null);
+      setUpload(null);
     }
   }
 
@@ -704,9 +704,6 @@ export function NewVideoIntakeForm({
               {imageCount} ảnh sẽ được AI đọc (vd số liệu like/view/comment).
             </p>
           )}
-          {uploadInfo && (
-            <p className="mt-1 text-xs text-gray-500">{uploadInfo}</p>
-          )}
         </Field>
 
         <Field label="Ghi chú nhân viên (tuỳ chọn)">
@@ -723,6 +720,25 @@ export function NewVideoIntakeForm({
         <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
         </p>
+      )}
+
+      {upload && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <span className="truncate text-sm font-medium text-blue-900">
+              {upload.label}
+            </span>
+            <span className="shrink-0 text-lg font-bold tabular-nums text-brand">
+              {upload.pct >= 100 ? "Đang hoàn tất…" : `${upload.pct}%`}
+            </span>
+          </div>
+          <div className="h-3 w-full overflow-hidden rounded-full bg-blue-100">
+            <div
+              className="h-full rounded-full bg-brand transition-all duration-200"
+              style={{ width: `${upload.pct}%` }}
+            />
+          </div>
+        </div>
       )}
 
       <div className="flex flex-wrap items-center gap-3">
