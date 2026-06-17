@@ -12,6 +12,18 @@ import type { VideoFinalAction, RiskLevel } from "@/types/videoReview";
 
 type Db = SupabaseClient<Database>;
 
+/**
+ * Chia mảng id thành lô nhỏ. PostgREST nhét toàn bộ .in(...) vào URL, nên list
+ * vài trăm/nghìn UUID sẽ vượt giới hạn độ dài URL -> 400 Bad Request. Lô ~100
+ * id giữ URL an toàn (~4KB).
+ */
+function chunk<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+const IN_BATCH = 100;
+
 export type SubmissionWithRelations =
   Database["public"]["Tables"]["video_submissions"]["Row"] & {
     creator: { id: string; full_name: string | null; email: string } | null;
@@ -164,25 +176,32 @@ export async function fetchLatestDecisionsMap(
 ): Promise<Map<string, DecisionLite>> {
   const map = new Map<string, DecisionLite>();
   if (submissionIds.length === 0) return map;
-  const { data, error } = await supabase
-    .from("video_final_decisions")
-    .select(
-      "video_submission_id,final_action,final_score,creative_score,policy_safety_score,copyright_safety_score,created_at",
-    )
-    .in("video_submission_id", submissionIds)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  for (const row of data ?? []) {
-    // vì đã order desc, bản đầu cho mỗi submission là latest
-    if (!map.has(row.video_submission_id)) {
-      map.set(row.video_submission_id, {
-        video_submission_id: row.video_submission_id,
-        final_action: row.final_action,
-        final_score: Number(row.final_score),
-        creative_score: Number(row.creative_score),
-        policy_safety_score: Number(row.policy_safety_score),
-        copyright_safety_score: Number(row.copyright_safety_score),
-      });
+  // Lô .in(...) để tránh URL quá dài (400) khi có nhiều submission.
+  const results = await Promise.all(
+    chunk(submissionIds, IN_BATCH).map((ids) =>
+      supabase
+        .from("video_final_decisions")
+        .select(
+          "video_submission_id,final_action,final_score,creative_score,policy_safety_score,copyright_safety_score,created_at",
+        )
+        .in("video_submission_id", ids)
+        .order("created_at", { ascending: false }),
+    ),
+  );
+  for (const { data, error } of results) {
+    if (error) throw error;
+    for (const row of data ?? []) {
+      // vì đã order desc, bản đầu cho mỗi submission là latest
+      if (!map.has(row.video_submission_id)) {
+        map.set(row.video_submission_id, {
+          video_submission_id: row.video_submission_id,
+          final_action: row.final_action,
+          final_score: Number(row.final_score),
+          creative_score: Number(row.creative_score),
+          policy_safety_score: Number(row.policy_safety_score),
+          copyright_safety_score: Number(row.copyright_safety_score),
+        });
+      }
     }
   }
   return map;
@@ -195,15 +214,21 @@ export async function fetchLatestPolicyLevelMap(
 ): Promise<Map<string, RiskLevel>> {
   const map = new Map<string, RiskLevel>();
   if (submissionIds.length === 0) return map;
-  const { data, error } = await supabase
-    .from("facebook_policy_checks")
-    .select("video_submission_id,final_policy_level,created_at")
-    .in("video_submission_id", submissionIds)
-    .order("created_at", { ascending: false });
-  if (error) throw error;
-  for (const row of data ?? []) {
-    if (!map.has(row.video_submission_id)) {
-      map.set(row.video_submission_id, row.final_policy_level);
+  const results = await Promise.all(
+    chunk(submissionIds, IN_BATCH).map((ids) =>
+      supabase
+        .from("facebook_policy_checks")
+        .select("video_submission_id,final_policy_level,created_at")
+        .in("video_submission_id", ids)
+        .order("created_at", { ascending: false }),
+    ),
+  );
+  for (const { data, error } of results) {
+    if (error) throw error;
+    for (const row of data ?? []) {
+      if (!map.has(row.video_submission_id)) {
+        map.set(row.video_submission_id, row.final_policy_level);
+      }
     }
   }
   return map;
