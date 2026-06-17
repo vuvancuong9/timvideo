@@ -240,3 +240,48 @@ export async function updateSubmissionScores(
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+/**
+ * Backfill cột "File video" (L): điền link Drive từ DB vào các dòng đang TRỐNG.
+ * Đọc A2:L, GIỮ NGUYÊN L đã có, chỉ điền khi trống và DB có link cho Sub ID đó.
+ * Ghi lại cả cột L 1 lần (an toàn — không đụng cột khác).
+ */
+export async function backfillFileLinks(
+  driveLinkBySubId: Map<string, string>,
+): Promise<{ ok: boolean; updated?: number; scanned?: number; error?: string }> {
+  try {
+    const sheets = await getSheetsClient();
+    const spreadsheetId = await getSheetId();
+    if (!sheets || !spreadsheetId) {
+      return { ok: false, error: "Chưa cấu hình GOOGLE_SHEET_ID / credential" };
+    }
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "A2:L",
+    });
+    const rows = res.data.values ?? [];
+    if (rows.length === 0) return { ok: true, updated: 0, scanned: 0 };
+    let updated = 0;
+    const newL = rows.map((r) => {
+      const subId = (r[0] ?? "").toString().trim();
+      const curL = (r[11] ?? "").toString().trim();
+      if (!curL && subId) {
+        const link = driveLinkBySubId.get(subId);
+        if (link) {
+          updated++;
+          return [link];
+        }
+      }
+      return [curL];
+    });
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: `L2:L${rows.length + 1}`,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: newL },
+    });
+    return { ok: true, updated, scanned: rows.length };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
