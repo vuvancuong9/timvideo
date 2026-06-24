@@ -59,7 +59,10 @@ export async function POST() {
         candidates: map.size,
       },
     });
-    return jsonOk(result);
+    return jsonOk({
+      ...result,
+      message: `Đã điền link Drive vào ${result.updated} dòng còn trống (quét ${result.scanned} dòng).`,
+    });
   } catch (e) {
     return handleApiError(e);
   }

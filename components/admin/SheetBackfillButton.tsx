@@ -2,8 +2,14 @@
 
 import { useState } from "react";
 
-/** Nút admin: điền link video Drive vào cột "File video" của Google Sheet. */
-export function SheetBackfillButton() {
+/** Nút admin gọi 1 endpoint đồng bộ Sheet (POST) và hiển thị kết quả. */
+export function SheetSyncButton({
+  endpoint,
+  label,
+}: {
+  endpoint: string;
+  label: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -14,14 +20,10 @@ export function SheetBackfillButton() {
     setMsg(null);
     setErr(null);
     try {
-      const res = await fetch("/api/admin/backfill-sheet-files", {
-        method: "POST",
-      });
+      const res = await fetch(endpoint, { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || "Đồng bộ thất bại");
-      setMsg(
-        `Đã điền link Drive vào ${json.updated} dòng còn trống (quét ${json.scanned} dòng).`,
-      );
+      setMsg(json.message || "Hoàn tất.");
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Có lỗi xảy ra");
     } finally {
@@ -37,7 +39,7 @@ export function SheetBackfillButton() {
         disabled={busy}
         className="rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {busy ? "Đang đồng bộ…" : "Đồng bộ link Drive vào Sheet"}
+        {busy ? "Đang chạy…" : label}
       </button>
       {msg && <span className="text-sm text-green-700">{msg}</span>}
       {err && <span className="text-sm text-red-600">{err}</span>}

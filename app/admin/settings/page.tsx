@@ -4,7 +4,7 @@ import { getManagedSettingsStatus } from "@/lib/app-settings";
 import { isDriveOAuthConnected } from "@/lib/drive-oauth";
 import { IntegrationSettingsClient } from "@/components/admin/IntegrationSettingsClient";
 import { SalesImportClient } from "@/components/admin/SalesImportClient";
-import { SheetBackfillButton } from "@/components/admin/SheetBackfillButton";
+import { SheetSyncButton } from "@/components/admin/SheetBackfillButton";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { ROLE_LABELS } from "@/lib/constants";
 
@@ -130,15 +130,35 @@ export default async function AdminSettingsPage({
       </Card>
 
       <Card>
-        <h2 className="mb-2 font-semibold text-gray-900">
-          Đồng bộ link video Drive vào Google Sheet
-        </h2>
-        <p className="mb-3 text-sm text-gray-500">
-          Điền link video trên Drive vào cột “File video” cho các dòng còn
-          trống (lấy từ database). Dòng đã có link giữ nguyên; dòng chỉ-có-link
-          (không tải file) sẽ bỏ qua. Chạy lại bất cứ lúc nào.
-        </p>
-        <SheetBackfillButton />
+        <h2 className="mb-3 font-semibold text-gray-900">Đồng bộ Google Sheet</h2>
+        <div className="space-y-5">
+          <div>
+            <p className="mb-2 text-sm text-gray-500">
+              <span className="font-medium text-gray-700">
+                Bổ sung dòng còn thiếu:
+              </span>{" "}
+              ghi bù các submission có trong hệ thống nhưng chưa có trong Sheet
+              (vd: lúc Sheet bị mất quyền ghi). Không đụng dòng đã có, đúng thứ
+              tự thời gian.
+            </p>
+            <SheetSyncButton
+              endpoint="/api/admin/backfill-missing-rows"
+              label="Bổ sung submission còn thiếu vào Sheet"
+            />
+          </div>
+          <div>
+            <p className="mb-2 text-sm text-gray-500">
+              <span className="font-medium text-gray-700">Điền link Drive:</span>{" "}
+              điền link video Drive vào cột “File video” cho các dòng còn trống.
+              Dòng đã có link giữ nguyên; dòng chỉ-có-link (không tải file) bỏ
+              qua.
+            </p>
+            <SheetSyncButton
+              endpoint="/api/admin/backfill-sheet-files"
+              label="Đồng bộ link Drive vào Sheet"
+            />
+          </div>
+        </div>
       </Card>
 
       <Card>

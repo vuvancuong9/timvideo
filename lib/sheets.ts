@@ -285,3 +285,45 @@ export async function backfillFileLinks(
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }
+
+/** Đọc tập Sub ID (cột A) đang có trong Sheet. null nếu chưa cấu hình. */
+export async function listSheetSubIds(): Promise<Set<string> | null> {
+  const sheets = await getSheetsClient();
+  const spreadsheetId = await getSheetId();
+  if (!sheets || !spreadsheetId) return null;
+  const res = await sheets.spreadsheets.values.get({
+    spreadsheetId,
+    range: "A2:A",
+  });
+  const set = new Set<string>();
+  for (const r of res.data.values ?? []) {
+    const v = (r[0] ?? "").toString().trim();
+    if (v) set.add(v);
+  }
+  return set;
+}
+
+/** Append NHIỀU dòng submission 1 lần (ghi bù dòng còn thiếu). */
+export async function appendSubmissionRows(
+  rows: SubmissionSheetRow[],
+): Promise<{ ok: boolean; appended?: number; error?: string }> {
+  try {
+    if (rows.length === 0) return { ok: true, appended: 0 };
+    const sheets = await getSheetsClient();
+    const spreadsheetId = await getSheetId();
+    if (!sheets || !spreadsheetId) {
+      return { ok: false, error: "Chưa cấu hình GOOGLE_SHEET_ID / credential" };
+    }
+    await ensureHeader(sheets, spreadsheetId);
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: "A1",
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values: rows.map(toRowArray) },
+    });
+    return { ok: true, appended: rows.length };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
