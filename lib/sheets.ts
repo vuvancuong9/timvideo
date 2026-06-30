@@ -86,8 +86,8 @@ function toRowArray(r: SubmissionSheetRow): (string | number)[] {
     r.source,
     r.videoUrl,
     r.fileUrl,
-    r.status,
-    "", // N Điểm bán hàng
+    "", // M Trạng thái — web KHÔNG điền, người dùng tự điền
+    "", // N Điểm bán hàng — web KHÔNG điền, người dùng tự điền
     "", // O An toàn chính sách
     "", // P An toàn bản quyền
     "", // Q Điểm tổng
@@ -187,7 +187,7 @@ export async function appendSubmissionRow(
   }
 }
 
-/** Cập nhật điểm + kết luận vào dòng có Sub ID khớp (cột N..R). */
+/** Cập nhật điểm AI + kết luận vào dòng có Sub ID khớp (cột O..R; M & N để trống cho user). */
 export async function updateSubmissionScores(
   subId: string,
   scores: {
@@ -220,13 +220,13 @@ export async function updateSubmissionScores(
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `N${rowNum}:R${rowNum}`,
+      // Chỉ ghi O..R (An toàn CS, An toàn BQ, Điểm tổng, Kết luận).
+      // KHÔNG ghi M (Trạng thái) và N (Điểm bán hàng) — người dùng tự điền.
+      range: `O${rowNum}:R${rowNum}`,
       valueInputOption: "USER_ENTERED",
       requestBody: {
         values: [
           [
-            scores.status,
-            scores.creative,
             scores.policy,
             scores.copyright,
             scores.finalScore,
