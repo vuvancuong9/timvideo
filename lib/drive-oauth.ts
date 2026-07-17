@@ -185,6 +185,18 @@ export async function createOAuthResumableSession(params: {
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
+    // Drive của tài khoản Google đã kết nối bị đầy dung lượng (Google free = 15GB
+    // dùng chung Gmail + Photos + Drive). Google trả 403 storageQuotaExceeded.
+    if (res.status === 403 && /storageQuotaExceeded/i.test(t)) {
+      throw new ApiError(
+        507,
+        "Google Drive của tài khoản đang kết nối đã HẾT dung lượng nên không upload được video. " +
+          "Cách khắc phục: (1) Vào drive.google.com dọn bớt file / xoá thùng rác để trống chỗ, " +
+          "hoặc (2) Mua thêm dung lượng Google One, hoặc (3) Vào /admin/settings → nhóm 'Google Drive (cá nhân)' " +
+          "để kết nối lại bằng một tài khoản Google khác còn trống dung lượng.",
+        "DRIVE_QUOTA_EXCEEDED",
+      );
+    }
     throw new ApiError(502, `Drive tạo phiên upload lỗi (${res.status}). ${t}`.slice(0, 400));
   }
   const uploadUrl = res.headers.get("location");

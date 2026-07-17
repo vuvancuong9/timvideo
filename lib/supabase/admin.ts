@@ -23,6 +23,7 @@ export function createSupabaseAdminClient() {
     );
   }
   return createClient<Database>(url, serviceKey, {
+    db: { schema: (process.env.NEXT_PUBLIC_DB_SCHEMA || "public") as any },
     auth: { autoRefreshToken: false, persistSession: false },
   });
 }

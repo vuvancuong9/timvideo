@@ -16,6 +16,7 @@ export async function createSupabaseServerClient() {
   }
   const cookieStore = await cookies();
   return createServerClient<Database>(url, anonKey, {
+      db: { schema: (process.env.NEXT_PUBLIC_DB_SCHEMA || "public") as any },
       cookies: {
         getAll() {
           return cookieStore.getAll();
