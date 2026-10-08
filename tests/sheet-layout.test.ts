@@ -13,6 +13,7 @@ import {
   pickTab,
   planMissingHeaders,
   quoteSheetTitle,
+  toUserEnteredValue,
 } from "@/lib/sheet-layout";
 
 describe("normalizeHeader", () => {
@@ -116,6 +117,27 @@ describe("pickTab", () => {
     expect(pickTab(tabs, "WritebackTest")?.sheetId).toBe(594399014);
     expect(pickTab(tabs, "Không có")).toBeNull();
     expect(pickTab(tabs, "123")).toBeNull();
+  });
+});
+
+describe("toUserEnteredValue", () => {
+  it("chuỗi giống công thức → thêm dấu ' để giữ là chữ", () => {
+    expect(toUserEnteredValue("=HYPERLINK(1)")).toBe("'=HYPERLINK(1)");
+    expect(toUserEnteredValue("-50% giảm giá")).toBe("'-50% giảm giá");
+    expect(toUserEnteredValue("+84 912")).toBe("'+84 912");
+    expect(toUserEnteredValue("@shop")).toBe("'@shop");
+  });
+  it("chuỗi thường / ngày / link giữ nguyên, số giữ là số, null → rỗng", () => {
+    expect(toUserEnteredValue("08/10/2026")).toBe("08/10/2026");
+    expect(toUserEnteredValue("https://shopee.vn/x")).toBe("https://shopee.vn/x");
+    expect(toUserEnteredValue(63000)).toBe(63000);
+    expect(toUserEnteredValue(12.5)).toBe(12.5);
+    expect(toUserEnteredValue(Number.NaN)).toBe("");
+    expect(toUserEnteredValue(null)).toBe("");
+  });
+  it("dòng dựng theo map giữ đúng vị trí cột khi có cột BVP xen giữa", () => {
+    const m = buildColumnMap(["Sub ID", "Tên sản phẩm", "BVP_ROW_ID", "Giá"]);
+    expect(buildRow({ subId: "a", productName: "=x", price: 5 }, m).map(toUserEnteredValue)).toEqual(["a", "'=x", "", 5]);
   });
 });
 

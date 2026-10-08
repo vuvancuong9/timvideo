@@ -158,6 +158,17 @@ export function buildRow(
   return row;
 }
 
+/**
+ * Giá trị gửi với valueInputOption USER_ENTERED: số giữ là số; chuỗi bắt đầu
+ * bằng = + - @ thêm dấu ' (Sheets coi là chữ, không hiển thị dấu ') để không
+ * bị hiểu thành công thức; null → "" (giữ đúng vị trí cột trong mảng).
+ */
+export function toUserEnteredValue(v: CellValue): string | number {
+  if (v === null) return "";
+  if (typeof v === "number") return Number.isFinite(v) ? v : "";
+  return /^[=+\-@]/.test(v) ? `'${v}` : v;
+}
+
 /** 0 → A, 25 → Z, 26 → AA … */
 export function columnLetter(index: number): string {
   let n = index + 1;

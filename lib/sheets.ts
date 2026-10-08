@@ -25,12 +25,12 @@ import {
   buildColumnMap,
   buildRow,
   columnLetter,
-  ddmmyyyyToSerial,
   isBlankRow,
   isHeaderRow,
   pickTab,
   planMissingHeaders,
   quoteSheetTitle,
+  toUserEnteredValue,
   type CellValue,
   type ColumnMap,
   type SheetFieldKey,
@@ -241,68 +241,43 @@ function toFieldValues(r: SubmissionSheetRow): Partial<Record<SheetFieldKey, Cel
   };
 }
 
-const NUMBER_FORMATS: Partial<Record<SheetFieldKey, sheets_v4.Schema$NumberFormat>> = {
-  date: { type: "DATE", pattern: "dd/mm/yyyy" },
-  price: { type: "NUMBER", pattern: "#,##0" },
-  estimatedCommission: { type: "NUMBER", pattern: "#,##0" },
-};
-
 /**
- * Giá trị có kiểu tường minh (không để Sheets tự đoán theo locale): ngày là
- * serial + định dạng dd/mm/yyyy, số là số, còn lại là chuỗi (chuỗi bắt đầu
- * bằng "=" / "+" không bị hiểu thành công thức).
+ * Chèn dòng mới bằng values.append + INSERT_ROWS: Google tự chèn hàng mới nên
+ * nhiều lượt gửi cùng giây không ghi đè nhau (AppendCellsRequest thì có — 2
+ * request đồng thời ghi chung 1 dòng trống). values.append dò "bảng" liền
+ * mạch từ A1 nên yêu cầu tiêu đề ở đúng dòng 1; ngày gửi dạng dd/mm/yyyy
+ * (USER_ENTERED theo locale vi_VN của sheet).
+ * Trả về vùng đã ghi (vd 'DATA'!A47690:L47690) để audit biết dòng nào.
  */
-function toCellData(key: SheetFieldKey | undefined, v: CellValue): sheets_v4.Schema$CellData {
-  if (v === null || v === "") return {};
-  const fmt = key ? NUMBER_FORMATS[key] : undefined;
-  if (key === "date" && typeof v === "string") {
-    const serial = ddmmyyyyToSerial(v);
-    if (serial !== null) {
-      return { userEnteredValue: { numberValue: serial }, userEnteredFormat: { numberFormat: fmt } };
-    }
-  }
-  if (typeof v === "number" && Number.isFinite(v)) {
-    return {
-      userEnteredValue: { numberValue: v },
-      ...(fmt ? { userEnteredFormat: { numberFormat: fmt } } : {}),
-    };
-  }
-  return { userEnteredValue: { stringValue: String(v) } };
-}
-
-async function appendRows(rows: SubmissionSheetRow[]): Promise<void> {
+async function appendRows(rows: SubmissionSheetRow[]): Promise<string | null> {
   const t = await resolveTarget();
   if (!t) throw new Error("Chưa cấu hình GOOGLE_SHEET_ID / credential");
   const header = await loadHeader(t, APPEND_FIELD_KEYS);
-  if (header.map.subId === undefined) throw new Error('Dòng tiêu đề thiếu cột "Sub ID"');
-  const keyAt = new Map<number, SheetFieldKey>();
-  for (const [k, c] of Object.entries(header.map)) keyAt.set(c as number, k as SheetFieldKey);
-
-  await t.sheets.spreadsheets.batchUpdate({
+  if (header.map.subId !== 0) throw new Error('Cột "Sub ID" phải là cột A của dòng tiêu đề');
+  if (header.row !== 1) {
+    throw new Error(
+      `Tab "${t.title}": dòng tiêu đề đang ở dòng ${header.row}, phải ở dòng 1 — KHÔNG ghi để tránh chèn sai chỗ. Xoá các dòng phía trên tiêu đề rồi bấm "Ghi bù dòng thiếu".`,
+    );
+  }
+  const res = await t.sheets.spreadsheets.values.append({
     spreadsheetId: t.spreadsheetId,
+    range: `${t.q}!A1`,
+    valueInputOption: "USER_ENTERED",
+    insertDataOption: "INSERT_ROWS",
     requestBody: {
-      requests: [
-        {
-          appendCells: {
-            sheetId: t.sheetId,
-            rows: rows.map((r) => ({
-              values: buildRow(toFieldValues(r), header.map).map((v, c) => toCellData(keyAt.get(c), v)),
-            })),
-            fields: "userEnteredValue,userEnteredFormat.numberFormat",
-          },
-        },
-      ],
+      values: rows.map((r) => buildRow(toFieldValues(r), header.map).map(toUserEnteredValue)),
     },
   });
+  return res.data.updates?.updatedRange ?? null;
 }
 
-/** Append 1 dòng submission. Trả {ok, error?} để caller ghi audit. */
+/** Append 1 dòng submission. Trả {ok, range?, error?} để caller ghi audit. */
 export async function appendSubmissionRow(
   row: SubmissionSheetRow,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; range?: string; error?: string }> {
   try {
-    await appendRows([row]);
-    return { ok: true };
+    const range = await appendRows([row]);
+    return { ok: true, range: range ?? undefined };
   } catch (err) {
     return { ok: false, error: errMsg(err) };
   }

@@ -221,7 +221,7 @@ export async function createSubmissionWithJob(
       action: r.ok ? "sheet.append_ok" : "sheet.append_failed",
       entityType: "video_submission",
       entityId: sub.id,
-      after: { sub_id: subId, error: r.error ?? null },
+      after: { sub_id: subId, error: r.error ?? null, range: r.range ?? null },
     });
 
     // Nếu nhân viên đã chấm điểm thử trước khi gửi -> ghi LUÔN điểm + kết luận
