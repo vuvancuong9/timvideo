@@ -1,0 +1,140 @@
+import { describe, expect, it } from "vitest";
+import {
+  APPEND_FIELD_KEYS,
+  SCORE_FIELD_KEYS,
+  SHEET_HEADER,
+  buildColumnMap,
+  buildRow,
+  columnLetter,
+  ddmmyyyyToSerial,
+  isBlankRow,
+  isHeaderRow,
+  normalizeHeader,
+  pickTab,
+  planMissingHeaders,
+  quoteSheetTitle,
+} from "@/lib/sheet-layout";
+
+describe("normalizeHeader", () => {
+  it("bỏ khoảng trắng thừa, không phân biệt hoa thường", () => {
+    expect(normalizeHeader("  Tên   sản phẩm ")).toBe("tên sản phẩm");
+    expect(normalizeHeader("SUB ID")).toBe("sub id");
+  });
+  it("NFD (gõ bằng bộ gõ tổ hợp) vẫn khớp NFC", () => {
+    expect(normalizeHeader("Tên sản phẩm".normalize("NFD"))).toBe(normalizeHeader("Tên sản phẩm"));
+  });
+});
+
+describe("buildColumnMap", () => {
+  it("header chuẩn → A..R", () => {
+    const m = buildColumnMap(SHEET_HEADER);
+    expect(m.subId).toBe(0);
+    expect(m.productName).toBe(1);
+    expect(m.fileUrl).toBe(11);
+    expect(m.verdict).toBe(17);
+  });
+
+  it("cột bị chèn thêm / đổi chỗ → vẫn ghi đúng cột tiêu đề", () => {
+    const header = ["Sub ID", "", "Tên sản phẩm", "Ngày", "BVP_ROW_ID", "Nhân viên", "Link Shopee"];
+    const m = buildColumnMap(header);
+    expect(m.subId).toBe(0);
+    expect(m.productName).toBe(2);
+    expect(m.date).toBe(3);
+    expect(m.employee).toBe(5);
+    expect(m.shopeeUrl).toBe(6);
+  });
+
+  it("tiêu đề trùng → lấy cột đầu tiên", () => {
+    const m = buildColumnMap(["Sub ID", "Kết luận", "Kết luận", "Kết luận"]);
+    expect(m.verdict).toBe(1);
+  });
+
+  it("nhận alias không dấu", () => {
+    expect(buildColumnMap(["Sub ID", "Ten san pham"]).productName).toBe(1);
+  });
+});
+
+describe("isHeaderRow / isBlankRow", () => {
+  it("dòng dữ liệu không phải header", () => {
+    expect(isHeaderRow(["0610baybem1000033", "", "Bún gạo lứt"])).toBe(false);
+    expect(isHeaderRow(SHEET_HEADER)).toBe(true);
+    expect(isHeaderRow(["", "Sub ID"])).toBe(true);
+  });
+  it("ô chỉ có khoảng trắng = trống", () => {
+    expect(isBlankRow(["", " ", "    "])).toBe(true);
+    expect(isBlankRow(undefined)).toBe(true);
+    expect(isBlankRow(["", "x"])).toBe(false);
+  });
+});
+
+describe("planMissingHeaders", () => {
+  it("sheet đủ cột → không làm gì", () => {
+    expect(planMissingHeaders([...SHEET_HEADER, "BVP_ROW_ID"])).toEqual([]);
+  });
+  it("thiếu cột → thêm vào SAU ô tiêu đề cuối, không dời cột có sẵn", () => {
+    const header = ["Sub ID", "Ngày", "", "BVP_ROW_ID"];
+    const plan = planMissingHeaders(header);
+    expect(plan[0]).toEqual({ col: 4, header: "Tên sản phẩm", key: "productName" });
+    expect(plan.every((p) => p.col >= 4)).toBe(true);
+    expect(plan.map((p) => p.key)).not.toContain("subId");
+    expect(plan.map((p) => p.key)).not.toContain("date");
+  });
+  it("chỉ bổ sung cột app thực sự ghi (không tự thêm lại cột người dùng đã xoá)", () => {
+    const header = SHEET_HEADER.filter((h) => h !== "Trạng thái" && h !== "Điểm bán hàng");
+    expect(planMissingHeaders(header, APPEND_FIELD_KEYS)).toEqual([]);
+    expect(planMissingHeaders(header, SCORE_FIELD_KEYS)).toEqual([]);
+  });
+});
+
+describe("buildRow", () => {
+  it("đặt giá trị đúng cột, ô khác null (không đụng tới)", () => {
+    const m = buildColumnMap(["Sub ID", "BVP_ROW_ID", "Tên sản phẩm", "Giá"]);
+    const row = buildRow({ subId: "0810abc001", productName: "SP", price: 63000 }, m);
+    expect(row).toEqual(["0810abc001", null, "SP", 63000]);
+  });
+  it("trường không có cột tiêu đề thì bỏ qua", () => {
+    const m = buildColumnMap(["Sub ID"]);
+    expect(buildRow({ subId: "x", verdict: "Nên lấy" }, m)).toEqual(["x"]);
+  });
+});
+
+describe("pickTab", () => {
+  const tabs = [
+    { sheetId: 594399014, title: "WritebackTest", index: 2 },
+    { sheetId: 1664840937, title: "Trang tính2", index: 1 },
+    { sheetId: 0, title: "DATA", index: 0 },
+  ];
+  it("không cấu hình → tab hiển thị đầu tiên", () => {
+    expect(pickTab(tabs, null)?.title).toBe("DATA");
+    expect(pickTab([{ ...tabs[2], hidden: true }, tabs[1]], "")?.title).toBe("Trang tính2");
+  });
+  it("theo gid (bền khi đổi tên / đổi thứ tự tab)", () => {
+    expect(pickTab(tabs, "0")?.title).toBe("DATA");
+    expect(pickTab([{ ...tabs[2], title: "DATA cũ", index: 5 }, tabs[1]], "0")?.title).toBe("DATA cũ");
+  });
+  it("theo tên; không có → null (không đoán sang tab khác)", () => {
+    expect(pickTab(tabs, "WritebackTest")?.sheetId).toBe(594399014);
+    expect(pickTab(tabs, "Không có")).toBeNull();
+    expect(pickTab(tabs, "123")).toBeNull();
+  });
+});
+
+describe("helpers", () => {
+  it("columnLetter", () => {
+    expect(columnLetter(0)).toBe("A");
+    expect(columnLetter(17)).toBe("R");
+    expect(columnLetter(25)).toBe("Z");
+    expect(columnLetter(26)).toBe("AA");
+    expect(columnLetter(29)).toBe("AD");
+  });
+  it("quoteSheetTitle nhân đôi nháy đơn", () => {
+    expect(quoteSheetTitle("DATA")).toBe("'DATA'");
+    expect(quoteSheetTitle("Bob's")).toBe("'Bob''s'");
+  });
+  it("ddmmyyyyToSerial khớp serial Google Sheets", () => {
+    expect(ddmmyyyyToSerial("30/12/1899")).toBe(0);
+    expect(ddmmyyyyToSerial("01/01/1900")).toBe(2);
+    expect(ddmmyyyyToSerial("06/10/2026")).toBe(46301);
+    expect(ddmmyyyyToSerial("2026-10-06")).toBeNull();
+  });
+});

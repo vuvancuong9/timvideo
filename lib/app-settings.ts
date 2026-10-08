@@ -159,6 +159,20 @@ export const MANAGED_SETTINGS: SettingDef[] = [
     ],
   },
   {
+    key: "GOOGLE_SHEET_TAB",
+    label: "Tab ghi dữ liệu (gid hoặc tên tab)",
+    group: "Google Sheet",
+    isSecret: false,
+    placeholder: "0",
+    help: "Để trống = tab đầu tiên. Nên điền gid để đổi tên / kéo đổi thứ tự tab vẫn ghi đúng chỗ.",
+    guide: [
+      "Mở Google Sheet, bấm vào tab chứa dữ liệu (vd DATA).",
+      "Nhìn URL: …/edit#gid=<SỐ> → <SỐ> là gid của tab (tab đầu tiên thường là 0).",
+      "Dán <SỐ> vào ô này (hoặc gõ đúng tên tab).",
+      'App ghi theo TÊN cột ở dòng tiêu đề (ô "Sub ID", "Tên sản phẩm"…), nên có thể thêm cột riêng, nhưng đừng đổi tên các tiêu đề này.',
+    ],
+  },
+  {
     key: "GOOGLE_OAUTH_CLIENT_ID",
     label: "Google OAuth Client ID (lưu video vào Drive của bạn)",
     group: "Google Drive (cá nhân)",
