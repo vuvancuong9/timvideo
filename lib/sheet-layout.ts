@@ -98,26 +98,45 @@ export function buildColumnMap(headerRow: readonly unknown[]): ColumnMap {
 }
 
 /**
- * Các trường app cần mà dòng tiêu đề đang THIẾU → đặt tiêu đề vào các ô trống
- * NGAY SAU ô tiêu đề cuối cùng có chữ. Không bao giờ dời / ghi đè cột có sẵn.
+ * Tiêu đề các trường app cần mà dòng tiêu đề đang THIẾU. App không tự thêm
+ * tiêu đề vào sheet dùng chung (BVP worker cũng thêm nhãn vào "ô trống kế
+ * tiếp" — hai bên sẽ ghi đè nhãn của nhau), nên thiếu = dừng và báo.
  */
-export function planMissingHeaders(
+export function missingHeaders(
   headerRow: readonly unknown[],
-  keys: readonly SheetFieldKey[] = SHEET_FIELDS.map((f) => f.key),
-): { col: number; header: string; key: SheetFieldKey }[] {
+  keys: readonly SheetFieldKey[],
+): string[] {
   const map = buildColumnMap(headerRow);
-  let lastFilled = -1;
-  headerRow.forEach((v, i) => {
-    if (String(v ?? "").trim() !== "") lastFilled = i;
-  });
-  const plan: { col: number; header: string; key: SheetFieldKey }[] = [];
-  let next = lastFilled + 1;
-  for (const f of SHEET_FIELDS) {
-    if (keys.includes(f.key) && map[f.key] === undefined) {
-      plan.push({ col: next++, header: f.header, key: f.key });
-    }
+  return SHEET_FIELDS.filter((f) => keys.includes(f.key) && map[f.key] === undefined).map(
+    (f) => f.header,
+  );
+}
+
+/** Nhãn cột thuộc BVP worker (tìm cột theo tên). App không bao giờ ghi các cột này. */
+export const BVP_LABELS = ["BVP_ROW_ID", "Trạng thái Video", "Link driver video"];
+
+/** Index cột có tiêu đề khớp `label` (đã chuẩn hoá), -1 nếu không có. */
+export function findLabel(headerRow: readonly unknown[], label: string): number {
+  const want = normalizeHeader(label);
+  return headerRow.findIndex((v) => normalizeHeader(v) === want);
+}
+
+/**
+ * Nhãn của app / BVP xuất hiện từ 2 lần trở lên ở dòng tiêu đề → không biết
+ * cột nào đúng (BVP đọc ô đầu, ghi ô cuối), nên phải dừng thay vì đoán.
+ */
+export function duplicateLabels(headerRow: readonly unknown[]): string[] {
+  const known = new Set<string>([...FIELD_BY_NORMALIZED.keys(), ...BVP_LABELS.map(normalizeHeader)]);
+  const seen = new Map<string, { label: string; n: number }>();
+  for (const v of headerRow) {
+    const k = normalizeHeader(v);
+    if (!k || !known.has(k)) continue;
+    const key = FIELD_BY_NORMALIZED.get(k) ?? k;
+    const e = seen.get(key) ?? { label: String(v).trim(), n: 0 };
+    e.n++;
+    seen.set(key, e);
   }
-  return plan;
+  return [...seen.values()].filter((e) => e.n > 1).map((e) => e.label);
 }
 
 /** Trường app tự ghi khi thêm dòng (M "Trạng thái", N "Điểm bán hàng" do người dùng tự điền). */

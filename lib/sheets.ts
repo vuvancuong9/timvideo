@@ -25,10 +25,12 @@ import {
   buildColumnMap,
   buildRow,
   columnLetter,
+  duplicateLabels,
+  findLabel,
   isBlankRow,
   isHeaderRow,
+  missingHeaders,
   pickTab,
-  planMissingHeaders,
   quoteSheetTitle,
   toUserEnteredValue,
   type CellValue,
@@ -56,7 +58,7 @@ type Target = {
   q: string;
 };
 
-type Header = { row: number; map: ColumnMap };
+type Header = { row: number; map: ColumnMap; cells: string[] };
 
 async function getSheetsClient(): Promise<SheetsClient | null> {
   const rawEmail = await getSetting("GOOGLE_DRIVE_CLIENT_EMAIL");
@@ -132,8 +134,8 @@ async function tabLooksEmpty(t: Target): Promise<boolean> {
 
 /**
  * Tìm dòng tiêu đề + map cột. Tab trống hoàn toàn → ghi tiêu đề chuẩn.
- * Thiếu tiêu đề cho trường cần ghi → thêm tiêu đề vào ô trống phía SAU cột
- * cuối (không đụng cột có sẵn). Không tìm thấy tiêu đề → ném lỗi, KHÔNG ghi.
+ * Không tìm thấy tiêu đề / thiếu cột cần ghi / nhãn bị trùng → ném lỗi,
+ * KHÔNG ghi (thà thiếu dòng rồi ghi bù còn hơn ghi lệch cột).
  */
 async function loadHeader(t: Target, need: readonly SheetFieldKey[]): Promise<Header> {
   const res = await t.sheets.spreadsheets.values.get({
@@ -151,30 +153,27 @@ async function loadHeader(t: Target, need: readonly SheetFieldKey[]): Promise<He
         valueInputOption: "RAW",
         requestBody: { values: [SHEET_HEADER] },
       });
-      return { row: 1, map: buildColumnMap(SHEET_HEADER) };
+      return { row: 1, map: buildColumnMap(SHEET_HEADER), cells: [...SHEET_HEADER] };
     }
     throw new Error(
       `Tab "${t.title}": không thấy dòng tiêu đề (ô "Sub ID") trong ${HEADER_SCAN_ROWS} dòng đầu nên KHÔNG ghi (tránh lệch cột). Sửa lại dòng tiêu đề rồi bấm "Ghi bù dòng thiếu".`,
     );
   }
 
-  const header = rows[idx];
-  const map = buildColumnMap(header);
-  const plan = planMissingHeaders(header, need);
-  if (plan.length > 0) {
-    await t.sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId: t.spreadsheetId,
-      requestBody: {
-        valueInputOption: "RAW",
-        data: plan.map((p) => ({
-          range: `${t.q}!${columnLetter(p.col)}${idx + 1}`,
-          values: [[p.header]],
-        })),
-      },
-    });
-    for (const p of plan) map[p.key] = p.col;
+  const cells = rows[idx].map((v) => String(v ?? ""));
+  const dup = duplicateLabels(cells);
+  if (dup.length > 0) {
+    throw new Error(
+      `Tab "${t.title}": dòng tiêu đề có cột trùng tên (${dup.join(", ")}) nên KHÔNG ghi (không biết cột nào đúng). Xoá/đổi tên cột trùng rồi bấm "Ghi bù dòng thiếu".`,
+    );
   }
-  return { row: idx + 1, map };
+  const missing = missingHeaders(cells, need);
+  if (missing.length > 0) {
+    throw new Error(
+      `Tab "${t.title}": dòng tiêu đề thiếu cột ${missing.map((m) => `"${m}"`).join(", ")} nên KHÔNG ghi. Thêm lại đúng tên cột rồi bấm "Ghi bù dòng thiếu".`,
+    );
+  }
+  return { row: idx + 1, map: buildColumnMap(cells), cells };
 }
 
 /** Đọc 1 cột (theo index) từ dưới dòng tiêu đề tới hết. */
@@ -259,16 +258,43 @@ async function appendRows(rows: SubmissionSheetRow[]): Promise<string | null> {
       `Tab "${t.title}": dòng tiêu đề đang ở dòng ${header.row}, phải ở dòng 1 — KHÔNG ghi để tránh chèn sai chỗ. Xoá các dòng phía trên tiêu đề rồi bấm "Ghi bù dòng thiếu".`,
     );
   }
-  const res = await t.sheets.spreadsheets.values.append({
-    spreadsheetId: t.spreadsheetId,
-    range: `${t.q}!A1`,
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: {
-      values: rows.map((r) => buildRow(toFieldValues(r), header.map).map(toUserEnteredValue)),
-    },
-  });
-  return res.data.updates?.updatedRange ?? null;
+  const values = rows.map((r) => buildRow(toFieldValues(r), header.map).map(toUserEnteredValue));
+  const subIds = rows.map((r) => r.subId.trim());
+
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await t.sheets.spreadsheets.values.append({
+        spreadsheetId: t.spreadsheetId,
+        range: `${t.q}!A1`,
+        valueInputOption: "USER_ENTERED",
+        insertDataOption: "INSERT_ROWS",
+        requestBody: { values },
+      });
+      return res.data.updates?.updatedRange ?? null;
+    } catch (err) {
+      if (!isTransient(err) || attempt >= APPEND_ATTEMPTS) throw err;
+      await sleep(1000 * 3 ** (attempt - 1));
+      // Lỗi 5xx / mất kết nối vẫn có thể đã ghi xong phía Google: kiểm tra
+      // trước khi gửi lại để không sinh dòng trùng.
+      const present = new Set(await readColumn(t, header, 0));
+      const found = subIds.filter((s) => present.has(s)).length;
+      if (found === subIds.length) return null;
+      if (found > 0) throw new Error(`Ghi dở dang (${found}/${subIds.length} dòng đã lên) — kiểm tra lại sheet`);
+    }
+  }
+}
+
+const APPEND_ATTEMPTS = 4;
+
+function isTransient(err: unknown): boolean {
+  const e = err as { code?: unknown; status?: unknown; response?: { status?: unknown } };
+  const status = Number(e?.response?.status ?? e?.status ?? e?.code);
+  if ([429, 500, 502, 503, 504].includes(status)) return true;
+  return ["ECONNRESET", "ETIMEDOUT", "EAI_AGAIN", "ECONNREFUSED", "EPIPE"].includes(String(e?.code));
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 /** Append 1 dòng submission. Trả {ok, range?, error?} để caller ghi audit. */
@@ -321,8 +347,11 @@ export async function updateSubmissionScores(
     if (header.map.subId === undefined) return { ok: false, error: 'Thiếu cột "Sub ID"' };
 
     const ids = await readColumn(t, header, header.map.subId);
-    const i = ids.lastIndexOf(subId.trim());
+    const i = ids.indexOf(subId.trim());
     if (i === -1) return { ok: false, error: "Không tìm thấy Sub ID" };
+    if (ids.lastIndexOf(subId.trim()) !== i) {
+      return { ok: false, error: "Sub ID xuất hiện nhiều dòng — không ghi điểm để tránh ghi nhầm dòng" };
+    }
     const rowNum = header.row + 1 + i;
 
     const values: [SheetFieldKey, string | number][] = [
@@ -346,6 +375,8 @@ export async function updateSubmissionScores(
 /**
  * Backfill cột "File video": điền link Drive từ DB vào các ô đang TRỐNG,
  * GIỮ NGUYÊN ô đã có. Chỉ ghi đúng những ô cần điền (không ghi đè cả cột).
+ * Bỏ qua dòng đã có BVP_ROW_ID: BVP đối chiếu "File video" của dòng đó, đổi
+ * là nó khoá ghi.
  */
 export async function backfillFileLinks(
   driveLinkBySubId: Map<string, string>,
@@ -359,14 +390,16 @@ export async function backfillFileLinks(
     if (subCol === undefined || fileCol === undefined) {
       return { ok: false, error: 'Thiếu cột "Sub ID" hoặc "File video"' };
     }
-    const [ids, files] = await Promise.all([
+    const bvpCol = findLabel(header.cells, "BVP_ROW_ID");
+    const [ids, files, bvpIds] = await Promise.all([
       readColumn(t, header, subCol),
       readColumn(t, header, fileCol),
+      bvpCol >= 0 ? readColumn(t, header, bvpCol) : Promise.resolve([] as string[]),
     ]);
     const L = columnLetter(fileCol);
     const cells: { range: string; value: string }[] = [];
     ids.forEach((subId, i) => {
-      if (!subId || files[i]) return;
+      if (!subId || files[i] || bvpIds[i]) return;
       const link = driveLinkBySubId.get(subId);
       if (link) cells.push({ range: `${t.q}!${L}${header.row + 1 + i}`, value: link });
     });

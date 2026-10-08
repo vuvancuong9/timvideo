@@ -426,13 +426,20 @@ async function processClaimedJob(
   // Cập nhật điểm + kết luận vào Google Sheet (best-effort theo Sub ID).
   if (submission.sub_id) {
     try {
-      await updateSubmissionScores(submission.sub_id, {
+      const sr = await updateSubmissionScores(submission.sub_id, {
         status: FINAL_ACTION_LABELS[decision.final_action],
         creative: decision.creative_score,
         policy: decision.policy_safety_score,
         copyright: decision.copyright_safety_score,
         finalScore: decision.final_score,
         verdict: FINAL_ACTION_VERDICT[decision.final_action].headline,
+      });
+      await writeAuditLog({
+        actorId: null,
+        action: sr.ok ? "sheet.scores_ok" : "sheet.scores_failed",
+        entityType: "video_submission",
+        entityId: submission.id,
+        after: { sub_id: submission.sub_id, error: sr.error ?? null },
       });
     } catch {
       // không làm fail job vì lỗi Sheet

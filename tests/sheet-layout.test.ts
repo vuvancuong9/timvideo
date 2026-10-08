@@ -1,17 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   APPEND_FIELD_KEYS,
+  BVP_LABELS,
   SCORE_FIELD_KEYS,
   SHEET_HEADER,
   buildColumnMap,
   buildRow,
   columnLetter,
   ddmmyyyyToSerial,
+  duplicateLabels,
+  findLabel,
   isBlankRow,
   isHeaderRow,
+  missingHeaders,
   normalizeHeader,
   pickTab,
-  planMissingHeaders,
   quoteSheetTitle,
   toUserEnteredValue,
 } from "@/lib/sheet-layout";
@@ -68,22 +71,48 @@ describe("isHeaderRow / isBlankRow", () => {
   });
 });
 
-describe("planMissingHeaders", () => {
-  it("sheet đủ cột → không làm gì", () => {
-    expect(planMissingHeaders([...SHEET_HEADER, "BVP_ROW_ID"])).toEqual([]);
+/** Dòng 1 tab DATA sau khi sửa: A..R của app, S/T/U của BVP. */
+const LIVE_HEADER = [...SHEET_HEADER, "Trạng thái Video", "Link driver video", "BVP_ROW_ID"];
+
+describe("missingHeaders", () => {
+  it("sheet đủ cột (kể cả cột BVP) → không thiếu gì", () => {
+    expect(missingHeaders(LIVE_HEADER, APPEND_FIELD_KEYS)).toEqual([]);
+    expect(missingHeaders(LIVE_HEADER, SCORE_FIELD_KEYS)).toEqual([]);
   });
-  it("thiếu cột → thêm vào SAU ô tiêu đề cuối, không dời cột có sẵn", () => {
-    const header = ["Sub ID", "Ngày", "", "BVP_ROW_ID"];
-    const plan = planMissingHeaders(header);
-    expect(plan[0]).toEqual({ col: 4, header: "Tên sản phẩm", key: "productName" });
-    expect(plan.every((p) => p.col >= 4)).toBe(true);
-    expect(plan.map((p) => p.key)).not.toContain("subId");
-    expect(plan.map((p) => p.key)).not.toContain("date");
+  it("thiếu cột cần ghi → liệt kê đúng tên để báo lỗi", () => {
+    const header = LIVE_HEADER.filter((h) => h !== "Link Shopee");
+    expect(missingHeaders(header, APPEND_FIELD_KEYS)).toEqual(["Link Shopee"]);
+    expect(missingHeaders(header, SCORE_FIELD_KEYS)).toEqual([]);
   });
-  it("chỉ bổ sung cột app thực sự ghi (không tự thêm lại cột người dùng đã xoá)", () => {
+  it("cột người dùng tự quản (Trạng thái, Điểm bán hàng) không bắt buộc", () => {
     const header = SHEET_HEADER.filter((h) => h !== "Trạng thái" && h !== "Điểm bán hàng");
-    expect(planMissingHeaders(header, APPEND_FIELD_KEYS)).toEqual([]);
-    expect(planMissingHeaders(header, SCORE_FIELD_KEYS)).toEqual([]);
+    expect(missingHeaders(header, APPEND_FIELD_KEYS)).toEqual([]);
+    expect(missingHeaders(header, SCORE_FIELD_KEYS)).toEqual([]);
+  });
+});
+
+describe("duplicateLabels", () => {
+  it("header chuẩn sau khi sửa → không trùng", () => {
+    expect(duplicateLabels(LIVE_HEADER)).toEqual([]);
+  });
+  it("header cũ với 3 ô 'Kết luận' → báo trùng", () => {
+    expect(duplicateLabels([...SHEET_HEADER, "Kết luận", "Kết luận", "BVP_ROW_ID"])).toEqual(["Kết luận"]);
+  });
+  it("alias không dấu cùng trường cũng tính là trùng; nhãn BVP trùng cũng báo", () => {
+    expect(duplicateLabels(["Sub ID", "Ngày", "Ngay"])).toEqual(["Ngày"]);
+    expect(duplicateLabels(["Sub ID", "BVP_ROW_ID", "bvp_row_id "])).toEqual(["BVP_ROW_ID"]);
+  });
+  it("cột lạ do người dùng thêm (trùng nhau) không chặn ghi", () => {
+    expect(duplicateLabels([...LIVE_HEADER, "Ghi chú", "Ghi chú"])).toEqual([]);
+  });
+});
+
+describe("findLabel", () => {
+  it("tìm cột BVP theo tên đã chuẩn hoá", () => {
+    expect(BVP_LABELS.every((l) => findLabel(LIVE_HEADER, l) >= 18)).toBe(true);
+    expect(findLabel(LIVE_HEADER, "BVP_ROW_ID")).toBe(20);
+    expect(findLabel(LIVE_HEADER, "trạng thái video")).toBe(18);
+    expect(findLabel(SHEET_HEADER, "BVP_ROW_ID")).toBe(-1);
   });
 });
 

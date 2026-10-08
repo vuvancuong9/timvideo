@@ -225,7 +225,7 @@ export async function createSubmissionWithJob(
     });
 
     // Nếu nhân viên đã chấm điểm thử trước khi gửi -> ghi LUÔN điểm + kết luận
-    // vào Sheet (cột N..R), khỏi chờ worker chạy.
+    // vào Sheet (các cột điểm theo tên tiêu đề), khỏi chờ worker chạy.
     if (r.ok && input.preview_scores) {
       const ps = input.preview_scores;
       const action = ps.final_action as VideoFinalAction;
