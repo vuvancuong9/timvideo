@@ -8,10 +8,14 @@ import { EmptyState, PageHeader } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 export default async function MyVideosPage() {
-  await requireRole(["staff"]);
+  const session = await requireRole(["staff"]);
   const supabase = await createSupabaseServerClient();
-  // RLS: staff chỉ thấy video của chính mình.
-  const { rows, count } = await fetchSubmissions(supabase, { limit: 500 });
+  // RLS vẫn chặn video người khác; lọc created_by để Postgres dùng index
+  // (created_by, created_at) thay vì quét cả bảng rồi mới lọc.
+  const { rows, count } = await fetchSubmissions(supabase, {
+    limit: 500,
+    created_by: session.userId,
+  });
 
   return (
     <div>

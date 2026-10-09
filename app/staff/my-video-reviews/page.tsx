@@ -18,9 +18,12 @@ import {
 export const dynamic = "force-dynamic";
 
 export default async function MyVideoReviewsPage() {
-  await requireRole(["staff"]);
+  const session = await requireRole(["staff"]);
   const supabase = await createSupabaseServerClient();
-  const { rows } = await fetchSubmissions(supabase, { limit: 500 });
+  const { rows } = await fetchSubmissions(supabase, {
+    limit: 500,
+    created_by: session.userId,
+  });
   const decisions = await fetchLatestDecisionsMap(
     supabase,
     rows.map((r) => r.id),
