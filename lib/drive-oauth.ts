@@ -46,7 +46,14 @@ export async function makeOAuthClient(origin: string) {
       "OAUTH_NOT_CONFIGURED",
     );
   }
-  return new google.auth.OAuth2(creds.id, creds.secret, getRedirectUri(origin));
+  return new google.auth.OAuth2({
+    clientId: creds.id,
+    clientSecret: creds.secret,
+    redirectUri: getRedirectUri(origin),
+    // Client được giữ giữa các request (xem getAuthorizedClient): nếu Google
+    // thu hồi access token trước hạn thì 401 → tự xin token mới và gọi lại.
+    forceRefreshOnFailure: true,
+  });
 }
 
 /** URL đưa admin tới trang đồng ý của Google. */
@@ -92,14 +99,28 @@ export async function isDriveOAuthConnected(): Promise<boolean> {
   return Boolean(rt && creds);
 }
 
+type OAuthClient = Awaited<ReturnType<typeof makeOAuthClient>>;
+
+/**
+ * Giữ client giữa các request trong cùng instance: client tự nhớ access token
+ * (~1 giờ) và chỉ refresh khi sắp hết hạn. Tạo client mới mỗi request thì lần
+ * nào cũng phải gọi Google xin token (thêm ~0,3s cho mỗi lần tải file).
+ */
+let cachedClient: { key: string; client: OAuthClient } | null = null;
+
 /** OAuth2 client đã gắn refresh token, sẵn sàng gọi Drive. */
 async function getAuthorizedClient(origin = "https://timvideo.vercel.app") {
-  const client = await makeOAuthClient(origin);
   const refreshToken = await getSetting("GOOGLE_OAUTH_REFRESH_TOKEN");
   if (!refreshToken) {
     throw new ApiError(500, "Chưa kết nối Google Drive (thiếu refresh token).", "OAUTH_NOT_CONNECTED");
   }
+  const creds = await getClientCreds();
+  const key = `${creds?.id}|${creds?.secret}|${refreshToken}`;
+  if (cachedClient?.key === key) return cachedClient.client;
+
+  const client = await makeOAuthClient(origin);
   client.setCredentials({ refresh_token: refreshToken });
+  cachedClient = { key, client };
   return client;
 }
 
@@ -162,27 +183,36 @@ export async function createOAuthResumableSession(params: {
   fileSize?: number;
   origin?: string;
 }): Promise<{ uploadUrl: string; folderId: string }> {
-  const auth = await getAuthorizedClient(params.origin);
   const folderId = await ensureFolder(params.origin);
-  const { token } = await auth.getAccessToken();
-  if (!token) throw new ApiError(502, "Không lấy được access token Google.");
+  const startSession = async () => {
+    const auth = await getAuthorizedClient(params.origin);
+    const { token } = await auth.getAccessToken();
+    if (!token) throw new ApiError(502, "Không lấy được access token Google.");
+    return fetch(RESUMABLE_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json; charset=UTF-8",
+        "X-Upload-Content-Type": params.mimeType || "application/octet-stream",
+        // QUAN TRỌNG cho CORS: Origin của request KHỞI TẠO quyết định
+        // Access-Control-Allow-Origin cho cả phiên resumable. Nếu thiếu, trình
+        // duyệt PUT thẳng lên session URL sẽ bị chặn ("Lỗi mạng khi upload Drive").
+        ...(params.origin ? { Origin: params.origin } : {}),
+        ...(params.fileSize
+          ? { "X-Upload-Content-Length": String(params.fileSize) }
+          : {}),
+      },
+      body: JSON.stringify({ name: params.fileName, parents: [folderId] }),
+    });
+  };
 
-  const res = await fetch(RESUMABLE_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json; charset=UTF-8",
-      "X-Upload-Content-Type": params.mimeType || "application/octet-stream",
-      // QUAN TRỌNG cho CORS: Origin của request KHỞI TẠO quyết định
-      // Access-Control-Allow-Origin cho cả phiên resumable. Nếu thiếu, trình
-      // duyệt PUT thẳng lên session URL sẽ bị chặn ("Lỗi mạng khi upload Drive").
-      ...(params.origin ? { Origin: params.origin } : {}),
-      ...(params.fileSize
-        ? { "X-Upload-Content-Length": String(params.fileSize) }
-        : {}),
-    },
-    body: JSON.stringify({ name: params.fileName, parents: [folderId] }),
-  });
+  let res = await startSession();
+  if (res.status === 401) {
+    // Token đang nhớ bị Google từ chối trước hạn (thu hồi...) → bỏ, xin lại.
+    await res.body?.cancel().catch(() => {});
+    cachedClient = null;
+    res = await startSession();
+  }
   if (!res.ok) {
     const t = await res.text().catch(() => "");
     // Drive của tài khoản Google đã kết nối bị đầy dung lượng (Google free = 15GB
@@ -211,25 +241,55 @@ export type DriveOAuthMeta = {
   directUrl: string | null;
 };
 
+/**
+ * Chỉ thao tác trên file nằm trong folder upload: route nhận fileId từ trình
+ * duyệt, mà client OAuth có quyền toàn bộ Drive của admin.
+ */
+async function getUploadFile(fileId: string, origin?: string) {
+  const auth = await getAuthorizedClient(origin);
+  const drive = google.drive({ version: "v3", auth });
+  const folderId = await ensureFolder(origin);
+  const { data } = await drive.files.get({
+    fileId,
+    fields: "id,name,webViewLink,parents,createdTime,trashed",
+  });
+  if (!(data.parents ?? []).includes(folderId)) {
+    throw new ApiError(403, "File không thuộc thư mục upload của hệ thống.", "NOT_UPLOAD_FILE");
+  }
+  return { drive, data };
+}
+
+const DISCARD_MAX_AGE_MS = 24 * 60 * 60_000;
+
+/**
+ * Bỏ file nhân viên đã tải ngầm nhưng không gửi (xoá/đổi file, đóng tab).
+ * Chỉ chuyển vào thùng rác (khôi phục được 30 ngày) và chỉ khi file còn RIÊNG
+ * TƯ: file của submission/chấm thử luôn được cấp quyền "anyone" trước khi
+ * dùng, nên file riêng tư không thể đang được tham chiếu.
+ */
+export async function discardUnpublishedUpload(
+  fileId: string,
+  origin?: string,
+): Promise<boolean> {
+  const { drive, data } = await getUploadFile(fileId, origin);
+  if (data.trashed) return true;
+  const created = data.createdTime ? Date.parse(data.createdTime) : NaN;
+  if (!Number.isFinite(created) || Date.now() - created > DISCARD_MAX_AGE_MS) return false;
+  const perms = await drive.permissions.list({ fileId, fields: "permissions(type)" });
+  if ((perms.data.permissions ?? []).some((p) => p.type === "anyone")) return false;
+  await drive.files.update({ fileId, requestBody: { trashed: true } });
+  return true;
+}
+
 /** Sau khi upload: cấp quyền xem-theo-link + lấy metadata. */
 export async function finalizeOAuthDriveFile(
   fileId: string,
   origin?: string,
 ): Promise<DriveOAuthMeta> {
-  const auth = await getAuthorizedClient(origin);
-  const drive = google.drive({ version: "v3", auth });
-  try {
-    await drive.permissions.create({
-      fileId,
-      requestBody: { role: "reader", type: "anyone" },
-    });
-  } catch {
-    // bỏ qua nếu không set được
-  }
-  const { data } = await drive.files.get({
-    fileId,
-    fields: "id,name,webViewLink",
-  });
+  const { drive, data } = await getUploadFile(fileId, origin);
+  await drive.permissions
+    .create({ fileId, requestBody: { role: "reader", type: "anyone" } })
+    .catch(() => null); // bỏ qua nếu không set được
   return {
     fileId: data.id ?? fileId,
     name: data.name ?? null,

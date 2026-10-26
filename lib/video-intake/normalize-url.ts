@@ -131,19 +131,36 @@ function extractYouTubeId(u: URL, host: string): string | null {
 }
 
 /** ID số của video/photo TikTok từ path (/@user/video/<id>, /video/<id>, /v/<id>). */
+/**
+ * ID toàn số 0 không phải video thật: link rút gọn hỏng / hết hạn của TikTok
+ * redirect về /@/video/0. Coi là không có ID, nếu không mọi link hỏng sẽ
+ * "trùng" nhau qua unique index.
+ */
+function realId(id: string | null | undefined): string | null {
+  return id && !/^0+$/.test(id) ? id : null;
+}
+
 function extractTikTokId(u: URL): string | null {
   const m = u.pathname.match(/\/(?:@[^/]+\/)?(?:video|photo|v)\/(\d+)/i);
-  return m ? m[1] : null;
+  return realId(m?.[1]);
 }
 
 /** ID số của video/reel Facebook (reel/videos/watch?v=/story_fbid). */
 function extractFacebookId(u: URL): string | null {
   const v = u.searchParams.get("v");
-  if (v && /^\d+$/.test(v)) return v;
+  if (v && /^\d+$/.test(v)) return realId(v);
   const story = u.searchParams.get("story_fbid");
-  if (story && /^\d+$/.test(story)) return story;
+  if (story && /^\d+$/.test(story)) return realId(story);
   const m = u.pathname.match(/\/(?:reels?|videos?|watch)\/(\d+)/i);
-  return m ? m[1] : null;
+  return realId(m?.[1]);
+}
+
+/** URL TikTok/Facebook đầy đủ nhưng trỏ tới video không tồn tại (ID 0). */
+export function isDeadVideoUrl(rawUrl: string): boolean {
+  const u = parseUrl(rawUrl);
+  if (!u) return false;
+  if (/\/(?:video|photo|v|reels?|videos?|watch)\/0+(?:[/?#]|$)/i.test(u.pathname)) return true;
+  return ["v", "story_fbid"].some((k) => /^0+$/.test(u.searchParams.get(k) ?? ""));
 }
 
 /**

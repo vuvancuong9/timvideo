@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { detectVideoSource } from "@/lib/video-intake/normalize-url";
 import { SOURCE_TYPE_LABELS } from "@/lib/video-intake/labels";
 import { formatCurrency } from "@/lib/format";
@@ -19,13 +18,30 @@ import type {
 
 type Category = { id: string; name: string };
 
-/** Metadata 1 file đã upload lên Supabase Storage. */
+/** Metadata 1 file đã upload. */
 type UploadedFile = {
   publicUrl: string;
   name: string;
   mimeType: string;
   kind: "video" | "image";
 };
+
+/** File đã PUT lên Drive nhưng chưa cấp quyền xem theo link. */
+type DriveUpload = {
+  fileId: string;
+  name: string;
+  mimeType: string;
+  kind: "video" | "image";
+};
+
+type FileUploadStatus =
+  | { state: "uploading"; pct: number }
+  | { state: "done" }
+  | { state: "error"; message: string };
+
+function fileKey(f: File): string {
+  return `${f.name}|${f.size}|${f.lastModified}|${f.type}`;
+}
 
 const SOURCE_OPTIONS: VideoSourceType[] = [
   "tiktok_url",
@@ -68,9 +84,6 @@ export function NewVideoIntakeForm({
   const [duplicate, setDuplicate] = useState(false);
   const [dupMsg, setDupMsg] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [upload, setUpload] = useState<{ label: string; pct: number } | null>(
-    null,
-  );
   const [error, setError] = useState<string | null>(null);
 
   const [scoring, setScoring] = useState(false);
@@ -89,23 +102,126 @@ export function NewVideoIntakeForm({
     setPreview((p) => (p ? null : p));
   }
 
-  // Cache file -> đã upload, để chấm thử rồi gửi không upload lại.
-  const uploadCache = useRef<Map<File, UploadedFile>>(new Map());
+  // File được tải lên NGAY khi chọn (chạy ngầm trong lúc nhân viên điền tiếp
+  // form); chấm thử / gửi chỉ chờ đúng lượt tải đó, không tải lại. File tải
+  // ngầm vẫn RIÊNG TƯ trên Drive, chỉ cấp quyền xem theo link khi bấm Chấm /
+  // Gửi (bỏ form giữa chừng thì không để lại file công khai). Khoá theo nội
+  // dung file vì chọn lại cùng file thì trình duyệt tạo đối tượng File mới.
+  const uploadCache = useRef<Map<string, Promise<DriveUpload>>>(new Map());
+  const publishCache = useRef<Map<string, Promise<UploadedFile>>>(new Map());
+  const uploadAborts = useRef<Map<string, AbortController>>(new Map());
+  // key -> fileId của file đã lên Drive; còn trong map mà chưa publish = file
+  // riêng tư cần dọn nếu nhân viên bỏ không gửi.
+  const uploadedIds = useRef<Map<string, string>>(new Map());
+  const [fileStatus, setFileStatus] = useState<Map<string, FileUploadStatus>>(
+    () => new Map(),
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  /** Xóa 1 file đã chọn (video/ảnh): bỏ cache upload + buộc chấm điểm lại. */
-  function removeFile(i: number) {
-    invalidatePreview();
-    setFiles((prev) => {
-      const target = prev[i];
-      if (target) uploadCache.current.delete(target);
-      const next = prev.filter((_, idx) => idx !== i);
-      // Hết file -> reset input để chọn lại đúng file đó vẫn nhận, và bỏ tên cũ.
-      if (next.length === 0 && fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+  /** Bỏ (vào thùng rác) file đã tải nhưng chưa từng chấm/gửi. */
+  function discardIfUnpublished(key: string, viaBeacon = false) {
+    const fileId = uploadedIds.current.get(key);
+    if (!fileId || publishCache.current.has(key)) return;
+    uploadedIds.current.delete(key);
+    discardFileId(fileId, viaBeacon);
+  }
+
+  function discardFileId(fileId: string, viaBeacon = false) {
+    const body = JSON.stringify({ fileId });
+    if (viaBeacon && typeof navigator !== "undefined" && navigator.sendBeacon) {
+      navigator.sendBeacon(
+        "/api/uploads/file/discard",
+        new Blob([body], { type: "application/json" }),
+      );
+      return;
+    }
+    fetch("/api/uploads/file/discard", {
+      method: "POST",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body,
+    }).catch(() => {});
+  }
+
+  function setStatus(key: string, s: FileUploadStatus | null) {
+    setFileStatus((prev) => {
+      const next = new Map(prev);
+      if (s) next.set(key, s);
+      else next.delete(key);
       return next;
     });
+  }
+
+  /** Huỷ lượt tải đang chạy của file (nếu có) và quên kết quả. */
+  function cancelUpload(f: File) {
+    const key = fileKey(f);
+    uploadAborts.current.get(key)?.abort();
+    uploadAborts.current.delete(key);
+    discardIfUnpublished(key);
+    uploadCache.current.delete(key);
+    publishCache.current.delete(key);
+    setStatus(key, null);
+  }
+
+  // Rời trang / đóng tab: huỷ lượt tải dở, dọn file đã tải mà không gửi.
+  // (Gửi xong thì mọi file đã publish nên không bị dọn.)
+  useEffect(() => {
+    const aborts = uploadAborts.current;
+    const ids = uploadedIds.current;
+    const leave = () => {
+      for (const c of aborts.values()) c.abort();
+      for (const key of [...ids.keys()]) discardIfUnpublished(key, true);
+    };
+    window.addEventListener("pagehide", leave);
+    return () => {
+      window.removeEventListener("pagehide", leave);
+      leave();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function startAll(list: File[]) {
+    list.forEach((f, i) => {
+      startUpload(f, i + 1).catch(() => {
+        // lỗi hiện ở danh sách file; bấm Gửi sẽ tải lại
+      });
+    });
+  }
+
+  // Link bị báo trùng → không gửi được → dừng tải cho đỡ tốn Drive; đổi sang
+  // link hợp lệ thì tải tiếp.
+  useEffect(() => {
+    if (duplicate) {
+      for (const f of files) {
+        if (fileStatus.get(fileKey(f))?.state === "uploading") cancelUpload(f);
+      }
+    } else if (!checking) {
+      startAll(files);
+    }
+    // chỉ phản ứng khi kết quả kiểm tra trùng đổi
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duplicate, checking]);
+
+  /** Chọn file mới: huỷ file bị bỏ, bắt đầu tải ngay các file mới. */
+  function selectFiles(next: File[]) {
+    const keep = new Set(next.map(fileKey));
+    for (const f of files) if (!keep.has(fileKey(f))) cancelUpload(f);
+    setFiles(next);
+    invalidatePreview();
+    if (!duplicate && !checking) startAll(next);
+  }
+
+  /** Xóa 1 file đã chọn (video/ảnh): huỷ upload + buộc chấm điểm lại. */
+  function removeFile(i: number) {
+    invalidatePreview();
+    const target = files[i];
+    if (target) cancelUpload(target);
+    const next = files.filter((_, idx) => idx !== i);
+    setFiles(next);
+    // Hết file -> reset input để chọn lại đúng file đó vẫn nhận, và bỏ tên cũ.
+    if (next.length === 0 && fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   }
 
   /** Đổi nguồn chấm điểm (file/link). Cả 2 ô vẫn điền được; chỉ buộc chấm lại. */
@@ -191,9 +307,15 @@ export function NewVideoIntakeForm({
     url: string,
     f: File,
     onProgress?: (pct: number) => void,
+    signal?: AbortSignal,
   ): Promise<string> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
+      if (signal) {
+        if (signal.aborted) return reject(new Error("Đã huỷ tải lên"));
+        signal.addEventListener("abort", () => xhr.abort(), { once: true });
+      }
+      xhr.onabort = () => reject(new Error("Đã huỷ tải lên"));
       xhr.open("PUT", url, true);
       xhr.setRequestHeader(
         "Content-Type",
@@ -223,19 +345,93 @@ export function NewVideoIntakeForm({
   }
 
   /**
-   * Upload 1 file. Tự chọn nơi lưu: Google Drive (nếu admin đã kết nối) hoặc
-   * Supabase Storage (fallback). Đặt tên theo Sub ID.
+   * Upload 1 file (dùng chung kết quả nếu file này đang/đã được tải). Lỗi thì
+   * quên kết quả để lần sau tải lại.
+   */
+  function startUpload(f: File, index: number): Promise<DriveUpload> {
+    const key = fileKey(f);
+    const cached = uploadCache.current.get(key);
+    if (cached) return cached;
+    const ctrl = new AbortController();
+    uploadAborts.current.set(key, ctrl);
+    setStatus(key, { state: "uploading", pct: 0 });
+    const p: Promise<DriveUpload> = uploadOne(
+      f,
+      index,
+      (pct) => {
+        if (!ctrl.signal.aborted) setStatus(key, { state: "uploading", pct });
+      },
+      ctrl.signal,
+    )
+      .then((up) => {
+        if (ctrl.signal.aborted) {
+          // Bị huỷ đúng lúc vừa tải xong: file đã nằm trên Drive → dọn luôn.
+          discardFileId(up.fileId);
+          throw new Error("Đã huỷ tải lên");
+        }
+        uploadedIds.current.set(key, up.fileId);
+        setStatus(key, { state: "done" });
+        return up;
+      })
+      .catch((err: unknown) => {
+        if (uploadCache.current.get(key) === p) uploadCache.current.delete(key);
+        if (!ctrl.signal.aborted) {
+          setStatus(key, {
+            state: "error",
+            message: err instanceof Error ? err.message : "Tải lên thất bại",
+          });
+        }
+        throw err;
+      })
+      .finally(() => {
+        if (uploadAborts.current.get(key) === ctrl) uploadAborts.current.delete(key);
+      });
+    uploadCache.current.set(key, p);
+    return p;
+  }
+
+  /** Cấp quyền xem theo link cho file đã tải (1 lần mỗi file) → link dùng cho AI / Sheet. */
+  function publishUpload(f: File, up: DriveUpload): Promise<UploadedFile> {
+    const key = fileKey(f);
+    const cached = publishCache.current.get(key);
+    if (cached) return cached;
+    const p = (async (): Promise<UploadedFile> => {
+      const compRes = await fetch("/api/uploads/file/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId: up.fileId }),
+      });
+      const compJson = await compRes.json();
+      if (!compRes.ok) {
+        throw new Error(compJson.error || "Không hoàn tất upload Drive");
+      }
+      return {
+        publicUrl: compJson.drive.webViewLink || compJson.drive.directUrl || "",
+        name: up.name,
+        mimeType: up.mimeType,
+        kind: up.kind,
+      };
+    })();
+    publishCache.current.set(key, p);
+    p.catch(() => {
+      if (publishCache.current.get(key) === p) publishCache.current.delete(key);
+    });
+    return p;
+  }
+
+  /**
+   * Upload 1 file lên Google Drive: tạo phiên → PUT thẳng từ trình duyệt.
+   * File còn riêng tư cho tới khi publishUpload.
    */
   async function uploadOne(
     f: File,
     index: number,
-    onProgress?: (pct: number) => void,
-  ): Promise<UploadedFile> {
-    const cached = uploadCache.current.get(f);
-    if (cached) return cached;
-
+    onProgress: (pct: number) => void,
+    signal: AbortSignal,
+  ): Promise<DriveUpload> {
     const sessionRes = await fetch("/api/uploads/file/create-session", {
       method: "POST",
+      signal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         fileName: f.name,
@@ -253,42 +449,16 @@ export function NewVideoIntakeForm({
       );
     }
 
-    let meta: UploadedFile;
-    if (sessionJson.mode === "drive") {
-      const fileId = await putToDrive(sessionJson.uploadUrl, f, onProgress);
-      const compRes = await fetch("/api/uploads/file/complete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileId }),
-      });
-      const compJson = await compRes.json();
-      if (!compRes.ok) {
-        throw new Error(compJson.error || "Không hoàn tất upload Drive");
-      }
-      meta = {
-        publicUrl: compJson.drive.webViewLink || compJson.drive.directUrl || "",
-        name: f.name,
-        mimeType: f.type || "application/octet-stream",
-        kind: isImageFile(f) ? "image" : "video",
-      };
-    } else {
-      // mode 'storage'
-      const supabase = createSupabaseBrowserClient();
-      const { error: upErr } = await supabase.storage
-        .from(sessionJson.bucket)
-        .uploadToSignedUrl(sessionJson.path, sessionJson.token, f, {
-          contentType: f.type || "application/octet-stream",
-        });
-      if (upErr) throw new Error(`Upload thất bại: ${upErr.message}`);
-      meta = {
-        publicUrl: sessionJson.publicUrl,
-        name: f.name,
-        mimeType: f.type || "application/octet-stream",
-        kind: isImageFile(f) ? "image" : "video",
-      };
+    if (sessionJson.mode !== "drive" || !sessionJson.uploadUrl) {
+      throw new Error("Server không trả phiên upload Google Drive");
     }
-    uploadCache.current.set(f, meta);
-    return meta;
+    const fileId = await putToDrive(sessionJson.uploadUrl, f, onProgress, signal);
+    return {
+      fileId,
+      name: f.name,
+      mimeType: f.type || "application/octet-stream",
+      kind: isImageFile(f) ? "image" : "video",
+    };
   }
 
   /** Upload tất cả file → {primary video meta cho cột drive_*, danh sách attachments}. */
@@ -301,15 +471,13 @@ export function NewVideoIntakeForm({
     } | null;
     attachments: SubmissionAttachment[];
   }> {
+    const uploads: DriveUpload[] = [];
+    for (const [i, f] of files.entries()) uploads.push(await startUpload(f, i + 1));
+    const metas = await Promise.all(files.map((f, i) => publishUpload(f, uploads[i])));
+
     const attachments: SubmissionAttachment[] = [];
     let primaryVideo: UploadedFile | null = null;
-    let done = 0;
-    for (const f of files) {
-      const label = `Đang tải lên ${done + 1}/${files.length}: ${f.name}`;
-      setUpload({ label, pct: 0 });
-      const meta = await uploadOne(f, done + 1, (pct) =>
-        setUpload({ label, pct: Math.min(pct, 100) }),
-      );
+    for (const meta of metas) {
       attachments.push({
         drive_file_id: "",
         name: meta.name,
@@ -318,9 +486,7 @@ export function NewVideoIntakeForm({
         kind: meta.kind,
       });
       if (meta.kind === "video" && !primaryVideo) primaryVideo = meta;
-      done += 1;
     }
-    setUpload(null);
     const primary = primaryVideo
       ? {
           driveFileId: null as null,
@@ -385,7 +551,6 @@ export function NewVideoIntakeForm({
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
     } finally {
       setScoring(false);
-      setUpload(null);
     }
   }
 
@@ -469,11 +634,22 @@ export function NewVideoIntakeForm({
     } catch (err) {
       setError(err instanceof Error ? err.message : "Có lỗi xảy ra");
       setSubmitting(false);
-      setUpload(null);
     }
   }
 
   const busy = submitting || scoring;
+  const uploadingIdx = files.findIndex(
+    (f) => fileStatus.get(fileKey(f))?.state === "uploading",
+  );
+  const uploadingStatus =
+    uploadingIdx >= 0 ? fileStatus.get(fileKey(files[uploadingIdx])) : undefined;
+  const activeUpload =
+    uploadingStatus?.state === "uploading"
+      ? {
+          label: `Đang tải lên ${uploadingIdx + 1}/${files.length}: ${files[uploadingIdx].name}`,
+          pct: Math.min(uploadingStatus.pct, 100),
+        }
+      : null;
   const submitDisabled = busy || duplicate || checking;
 
   return (
@@ -647,10 +823,8 @@ export function NewVideoIntakeForm({
             type="file"
             accept="video/*,image/*"
             multiple
-            onChange={(e) => {
-              setFiles(Array.from(e.target.files ?? []));
-              invalidatePreview();
-            }}
+            disabled={busy}
+            onChange={(e) => selectFiles(Array.from(e.target.files ?? []))}
             className="block w-full text-sm text-gray-600 file:mr-3 file:rounded-lg file:border-0 file:bg-brand file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-brand-dark"
           />
           {files.length > 0 && (
@@ -670,6 +844,7 @@ export function NewVideoIntakeForm({
                   <span className="shrink-0 text-gray-400">
                     ({(f.size / 1024 / 1024).toFixed(1)} MB)
                   </span>
+                  <UploadBadge status={fileStatus.get(fileKey(f))} />
                   <button
                     type="button"
                     onClick={() => removeFile(i)}
@@ -688,9 +863,7 @@ export function NewVideoIntakeForm({
             <button
               type="button"
               onClick={() => {
-                invalidatePreview();
-                for (const f of files) uploadCache.current.delete(f);
-                setFiles([]);
+                selectFiles([]);
                 if (fileInputRef.current) fileInputRef.current.value = "";
               }}
               disabled={busy}
@@ -722,22 +895,28 @@ export function NewVideoIntakeForm({
         </p>
       )}
 
-      {upload && (
+      {activeUpload && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3">
           <div className="mb-2 flex items-center justify-between gap-3">
             <span className="truncate text-sm font-medium text-blue-900">
-              {upload.label}
+              {activeUpload.label}
             </span>
             <span className="shrink-0 text-lg font-bold tabular-nums text-brand">
-              {upload.pct >= 100 ? "Đang hoàn tất…" : `${upload.pct}%`}
+              {activeUpload.pct >= 100 ? "Đang hoàn tất…" : `${activeUpload.pct}%`}
             </span>
           </div>
           <div className="h-3 w-full overflow-hidden rounded-full bg-blue-100">
             <div
               className="h-full rounded-full bg-brand transition-all duration-200"
-              style={{ width: `${upload.pct}%` }}
+              style={{ width: `${activeUpload.pct}%` }}
             />
           </div>
+          {!busy && (
+            <p className="mt-2 text-xs text-blue-800">
+              Video đang tải lên trong lúc bạn điền tiếp — bấm “Gửi video” bất cứ
+              lúc nào, phần còn lại sẽ tải nốt.
+            </p>
+          )}
         </div>
       )}
 
@@ -782,6 +961,21 @@ export function NewVideoIntakeForm({
 
 const inputClass =
   "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand focus:ring-1 focus:ring-brand";
+
+function UploadBadge({ status }: { status?: FileUploadStatus }) {
+  if (!status) return null;
+  if (status.state === "uploading") {
+    return <span className="shrink-0 tabular-nums text-blue-600">{status.pct}%</span>;
+  }
+  if (status.state === "done") {
+    return <span className="shrink-0 font-medium text-green-600">✓ Đã tải lên</span>;
+  }
+  return (
+    <span className="shrink-0 text-red-600" title={status.message}>
+      Lỗi tải — sẽ thử lại khi Gửi
+    </span>
+  );
+}
 
 function Field({
   label,

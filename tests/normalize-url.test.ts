@@ -3,6 +3,7 @@ import {
   detectVideoSource,
   canonicalizeVideoUrl,
   videoExternalId,
+  isDeadVideoUrl,
 } from "@/lib/video-intake/normalize-url";
 import { canonicalizeForDedup } from "@/lib/video-intake/duplicate";
 import { isShortLink } from "@/lib/video-intake/resolve-url";
@@ -78,6 +79,19 @@ describe("video khác nhau -> hash khác", () => {
     const a = canonicalizeForDedup("https://youtu.be/aaa");
     const b = canonicalizeForDedup("https://youtu.be/bbb");
     expect(a.canonicalHash).not.toBe(b.canonicalHash);
+  });
+});
+
+describe("video ID 0 (link hỏng / hết hạn)", () => {
+  it("không thành khoá chống trùng, được nhận diện là link chết", () => {
+    expect(videoExternalId("https://www.tiktok.com/@/video/0?_r=1&share_item_id=0")).toBeNull();
+    expect(videoExternalId("https://www.facebook.com/watch/?v=0")).toBeNull();
+    expect(isDeadVideoUrl("https://www.tiktok.com/@/video/0?_r=1")).toBe(true);
+    expect(isDeadVideoUrl("https://www.tiktok.com/@a/video/7555696123738901780")).toBe(false);
+    expect(isDeadVideoUrl("https://www.tiktok.com/@a/video/1000")).toBe(false);
+    expect(isDeadVideoUrl("https://www.facebook.com/watch/?v=0")).toBe(true);
+    expect(isDeadVideoUrl("https://www.facebook.com/permalink.php?story_fbid=0&id=1")).toBe(true);
+    expect(isDeadVideoUrl("https://www.facebook.com/watch/?v=1002084012178097")).toBe(false);
   });
 });
 

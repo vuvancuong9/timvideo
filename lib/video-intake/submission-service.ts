@@ -3,6 +3,7 @@
  * submission (created_by = auth.uid()), và service role để tạo review job
  * (bảng job không cho user thường ghi).
  */
+import { after } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import {
@@ -171,22 +172,69 @@ export async function createSubmissionWithJob(
     throw jobErr;
   }
 
+  const submissionId = sub.id;
+  const jobId = job.id;
+  const date = sheetDate();
+
+  // Audit + Google Sheet chạy SAU khi đã trả kết quả cho nhân viên: ghi Sheet
+  // mất ~2,7s (p90 ~3,9s) và không ảnh hưởng tới việc video đã được lưu.
+  // Phải truyền PROMISE (không phải callback): dạng callback chờ sự kiện
+  // 'close' của response, nếu nhân viên đã đóng tab / rớt mạng trước dòng này
+  // thì sự kiện đã qua và việc ghi Sheet + audit âm thầm không bao giờ chạy.
+  after(
+    recordSubmissionSideEffects({
+      userId,
+      submissionId,
+      jobId,
+      subId,
+      date,
+      productName,
+      shopeeUrl,
+      price,
+      pct,
+      rawVideoUrl,
+      account,
+      input,
+      actor,
+    }).catch((e) => console.error("[submission] side effects failed", subId, e)),
+  );
+
+  return { submissionId, jobId, subId };
+}
+
+async function recordSubmissionSideEffects(p: {
+  userId: string;
+  submissionId: string;
+  jobId: string;
+  subId: string;
+  date: string;
+  productName: string;
+  shopeeUrl: string;
+  price: number;
+  pct: number;
+  rawVideoUrl: string;
+  account: string;
+  input: CreateSubmissionInput;
+  actor?: { email?: string | null; fullName?: string | null };
+}): Promise<void> {
+  const { userId, subId, input, actor, price, pct } = p;
+  const admin = createSupabaseAdminClient();
   await writeAuditLog({
     actorId: userId,
     action: "submission.create",
     entityType: "video_submission",
-    entityId: sub.id,
+    entityId: p.submissionId,
     after: { sub_id: subId, source_type: input.source_type, status: "queued" },
   });
   await writeAuditLog({
     actorId: userId,
     action: "review_job.create",
     entityType: "video_review_job",
-    entityId: job.id,
-    after: { video_submission_id: sub.id },
+    entityId: p.jobId,
+    after: { video_submission_id: p.submissionId },
   });
 
-  // Ghi 1 dòng vào Google Sheet (best-effort: lỗi không làm fail submit).
+  // Ghi 1 dòng vào Google Sheet (best-effort: lỗi không ảnh hưởng submission).
   try {
     let categoryName = "";
     if (input.category_id) {
@@ -203,16 +251,16 @@ export async function createSubmissionWithJob(
       "";
     const r = await appendSubmissionRow({
       subId,
-      productName,
-      date: sheetDate(),
-      employee: actor?.fullName || actor?.email || account,
-      shopeeUrl,
+      productName: p.productName,
+      date: p.date,
+      employee: actor?.fullName || actor?.email || p.account,
+      shopeeUrl: p.shopeeUrl,
       price,
       commissionPercent: pct,
       estimatedCommission: Math.round((price * pct) / 100) / 1, // = price*pct/100
       category: categoryName,
       source: SOURCE_TYPE_LABELS[input.source_type] ?? input.source_type,
-      videoUrl: rawVideoUrl,
+      videoUrl: p.rawVideoUrl,
       fileUrl,
       status: "Chờ chấm",
     });
@@ -220,7 +268,7 @@ export async function createSubmissionWithJob(
       actorId: userId,
       action: r.ok ? "sheet.append_ok" : "sheet.append_failed",
       entityType: "video_submission",
-      entityId: sub.id,
+      entityId: p.submissionId,
       after: { sub_id: subId, error: r.error ?? null, range: r.range ?? null },
     });
 
@@ -243,15 +291,13 @@ export async function createSubmissionWithJob(
         actorId: userId,
         action: sr.ok ? "sheet.scores_ok" : "sheet.scores_failed",
         entityType: "video_submission",
-        entityId: sub.id,
+        entityId: p.submissionId,
         after: { sub_id: subId, error: sr.error ?? null },
       });
     }
   } catch {
     // tuyệt đối không làm fail submit vì lỗi Sheet
   }
-
-  return { submissionId: sub.id, jobId: job.id, subId };
 }
 
 /** Ngày dd/MM/yyyy theo giờ VN cho cột Sheet. */
